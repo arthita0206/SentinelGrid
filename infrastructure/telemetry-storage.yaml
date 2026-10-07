@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — persistent telemetry storage. Creates a DynamoDB table for
+  telemetry readings and an AWS IoT Core topic rule that routes messages
+  published to sentinelgrid/telemetry straight into that table, via a
+  dedicated least-privilege IAM role. No compute (Lambda), analytics, or
+  alerting resources are created by this template — see infrastructure/README.md.
+
+Resources:
+
+  TelemetryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SentinelGridTelemetry
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: node_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: node_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  IoTToDynamoDBRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridIoTToDynamoDBRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridIoTDynamoDBWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt TelemetryTable.Arn
+
+  TelemetryToDynamoDBRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: sentinelgrid_telemetry_to_dynamodb
+      TopicRulePayload:
+        AwsIotSqlVersion: "2016-03-23"
+        Sql: "SELECT * FROM 'sentinelgrid/telemetry'"
+        RuleDisabled: false
+        Actions:
+          - DynamoDBv2:
+              RoleArn: !GetAtt IoTToDynamoDBRole.Arn
+              PutItem:
+                TableName: !Ref TelemetryTable
+
+Outputs:
+  TelemetryTableName:
+    Description: Name of the DynamoDB table storing SentinelGrid telemetry.
+    Value: !Ref TelemetryTable
+
+  TelemetryTableArn:
+    Description: ARN of the DynamoDB telemetry table.
+    Value: !GetAtt TelemetryTable.Arn
+
+  IoTTopicRuleArn:
+    Description: ARN of the IoT Core topic rule routing telemetry to DynamoDB.
+    Value: !GetAtt TelemetryToDynamoDBRule.Arn
+
+  IoTToDynamoDBRoleArn:
+    Description: ARN of the IAM role the IoT rule assumes to write to DynamoDB.
+    Value: !GetAtt IoTToDynamoDBRole.Arn

@@ -1,0 +1,71 @@
+# SentinelGrid — Step 38 scale-test configuration (SRS NFR-3: 500 virtual
+# nodes). Re-run of the Step 37 500-node scale test after the AWS
+# account's Lambda concurrency limit was raised from 10 to 400.
+#
+# IDENTICAL to config/scale_test_config.yaml (Step 37's own config) in
+# every field EXCEPT `node_id_infix` — Step 38 uses its own distinct
+# infix so this run's telemetry/node data can never be confused with
+# Step 37's (or any other step's) data, per Step 38 Phase 4's explicit
+# requirement. Node count, subsystem distribution, telemetry interval,
+# and fault-injection settings are unchanged from Step 37 so the two
+# runs are directly comparable.
+#
+# 500 total nodes, split as evenly as possible across the three
+# subsystems (proportional to the existing 20/20/20 even split):
+#   power: 167, water: 167, traffic: 166  ->  167 + 167 + 166 = 500
+
+power:
+  num_nodes: 167
+
+water:
+  num_nodes: 167
+
+traffic:
+  num_nodes: 166
+
+telemetry:
+  interval_seconds: 5
+
+node_id_infix: step38-scale-20260915215011
+
+# Automatic fault injection stays OFF for the main 500-node scale test
+# (identical to Step 37's own config) -- the main run measures normal
+# telemetry ingestion/processing scalability only. Any optional, small,
+# bounded fault sample (Step 38 Phase 9) uses FaultInjectionEngine.inject()
+# directly against a handful of dedicated nodes, not this config, exactly
+# mirroring Step 37 Phase G's own approach.
+fault_injection:
+  enabled: false
+  mode: manual
+  random_seed: null
+  dropout:
+    enabled: true
+    duration_seconds: 15
+    probability: 0.0
+  corruption:
+    enabled: true
+    probability: 0.0
+  partition:
+    enabled: true
+    duration_seconds: 15
+    probability: 0.0
+  overload:
+    enabled: true
+    duration_seconds: 10
+    probability: 0.0
+  schedule: []
+
+# publisher.mode is intentionally NOT used by scripts/step37_scale_test.py
+# (that script builds its own AwsIotPublisher wrapped in a
+# ConcurrentPublisher directly, to control worker-pool sizing) -- kept
+# here only for consistency/documentation, matching
+# config/simulation_config.yaml's own shape.
+publisher:
+  mode: aws_iot
+
+aws:
+  region: ap-south-1
+  profile: sentinelgrid
+  iot:
+    topic: sentinelgrid/telemetry
+    endpoint_url: null

@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — SQS consumer Lambda (Step 26). Creates
+  SentinelGridSqsTelemetryConsumer and its dedicated execution role, plus
+  an AWS::Lambda::EventSourceMapping from the existing
+  SentinelGridTelemetryQueue (Step 25). The consumer parses each SQS
+  message body as telemetry JSON and synchronously invokes the existing,
+  unmodified SentinelGridAnomalyDetector Lambda with it — it does not
+  reimplement detection, persistence, or remediation-trigger logic. The
+  role's SQS permissions (Receive/Delete/GetQueueAttributes, scoped to
+  the queue) are the minimum AWS documents as required for a Lambda
+  event source mapping to poll SQS on the function's behalf — everything
+  else is scoped to exactly one resource. Does not modify the Analyzer,
+  the SQS queue stack, or any remediation stack. See
+  infrastructure/README.md and lambda_functions/sqs_consumer/README.md.
+
+Parameters:
+  DeploymentBucketName:
+    Type: String
+    Description: >
+      Name of an EXISTING, VERSIONING-ENABLED S3 bucket containing the
+      packaged SQS consumer zip (see
+      infrastructure/package-sqs-consumer.sh). This template does not
+      create this bucket.
+
+  DeploymentPackageKey:
+    Type: String
+    Default: sentinelgrid/sqs-consumer.zip
+    Description: S3 key of the packaged SQS consumer zip within DeploymentBucketName.
+
+  DeploymentPackageVersion:
+    Type: String
+    Description: >
+      S3 object VersionId of the SQS consumer zip at
+      DeploymentBucketName/DeploymentPackageKey. Required, no default —
+      see infrastructure/deploy-sqs-consumer.sh.
+
+  AnomalyDetectorFunctionArn:
+    Type: String
+    Description: >
+      ARN of the already-deployed SentinelGridAnomalyDetector Lambda
+      (see infrastructure/anomaly-detector.yaml). Required, no default —
+      that stack has no cross-stack Export for its Lambda ARN, so
+      infrastructure/deploy-sqs-consumer.sh obtains it live from that
+      stack's own FunctionArn Output. This template does not create,
+      modify, or assume anything about that stack.
+
+  TelemetryQueueArn:
+    Type: String
+    Description: >
+      ARN of the already-deployed SentinelGridTelemetryQueue (see
+      infrastructure/telemetry-sqs-queue.yaml, Step 25). Required, no
+      default — obtained live from that stack's own QueueArn Output by
+      the deploy script. This template does not create, modify, or
+      assume anything about that stack.
+
+  BatchSize:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    MaxValue: 10
+    Description: >
+      Maximum number of SQS messages delivered to the consumer per
+      invocation. Default 5 (not SQS's own default of 10): each message
+      is processed by a SYNCHRONOUS invoke of the Analyzer, which has its
+      own 10-second Lambda timeout ceiling — a batch of 5 processed
+      sequentially bounds worst-case total processing at 50 seconds,
+      leaving headroom under this function's own 60-second Timeout
+      (below). A batch of 10 would allow a 100-second worst case,
+      exceeding it.
+
+Resources:
+  SqsConsumerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridSqsConsumerExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridSqsConsumerLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/SentinelGridSqsTelemetryConsumer:*"
+        - PolicyName: SentinelGridSqsConsumerInvokeAnalyzer
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Ref AnomalyDetectorFunctionArn
+        - PolicyName: SentinelGridSqsConsumerPollQueue
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource:
+                  - !Ref TelemetryQueueArn
+
+  SqsConsumerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SentinelGridSqsTelemetryConsumer
+      Description: >-
+        SentinelGrid SQS consumer Lambda. Parses each SQS message body as
+        telemetry JSON and synchronously invokes the existing
+        SentinelGridAnomalyDetector with it, reporting per-message
+        success/failure via SQS partial batch response.
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      Handler: lambda_functions.sqs_consumer.handler.lambda_handler
+      Role: !GetAtt SqsConsumerExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref DeploymentBucketName
+        S3Key: !Ref DeploymentPackageKey
+        S3ObjectVersion: !Ref DeploymentPackageVersion
+      Environment:
+        Variables:
+          ANOMALY_DETECTOR_FUNCTION_ARN: !Ref AnomalyDetectorFunctionArn
+      Timeout: 60
+      MemorySize: 128
+
+  SqsEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !Ref TelemetryQueueArn
+      FunctionName: !Ref SqsConsumerFunction
+      Enabled: true
+      BatchSize: !Ref BatchSize
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+
+Outputs:
+  FunctionName:
+    Description: Name of the SQS consumer Lambda function.
+    Value: !Ref SqsConsumerFunction
+
+  FunctionArn:
+    Description: ARN of the SQS consumer Lambda function.
+    Value: !GetAtt SqsConsumerFunction.Arn
+
+  ExecutionRoleArn:
+    Description: ARN of the SQS consumer's execution role.
+    Value: !GetAtt SqsConsumerExecutionRole.Arn
+
+  EventSourceMappingId:
+    Description: UUID of the SQS -> SQS consumer event source mapping.
+    Value: !Ref SqsEventSourceMapping

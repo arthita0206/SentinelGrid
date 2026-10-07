@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — anomaly/event history storage. Creates a dedicated
+  DynamoDB table for persisted anomaly detection results, kept completely
+  separate from the raw telemetry table (see
+  infrastructure/telemetry-storage.yaml, which this template does not
+  read, modify, or depend on). No IAM role or IoT Rule is created here.
+  The table's ARN is exported (SentinelGridAnomalyEventsTableArn) so the
+  separate anomaly-detector stack (infrastructure/anomaly-detector.yaml)
+  can grant its Lambda execution role least-privilege dynamodb:PutItem
+  access via !ImportValue, without either stack needing to know the
+  other's internal resource names. (Step 35) The table's NAME is now also
+  exported (SentinelGridAnomalyEventsTableName), a purely additive
+  Outputs-section change, so the new knowledge-query stack can populate
+  its Query Lambda's ANOMALY_EVENTS_TABLE_NAME env var via !ImportValue
+  instead of a hardcoded name. See infrastructure/README.md.
+
+Resources:
+
+  AnomalyEventsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: SentinelGridAnomalyEvents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: node_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: node_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+Outputs:
+  AnomalyEventsTableName:
+    Description: Name of the DynamoDB table storing persisted anomaly detection events.
+    Value: !Ref AnomalyEventsTable
+    Export:
+      Name: SentinelGridAnomalyEventsTableName
+
+  AnomalyEventsTableArn:
+    Description: ARN of the DynamoDB anomaly-events table.
+    Value: !GetAtt AnomalyEventsTable.Arn
+    Export:
+      Name: SentinelGridAnomalyEventsTableArn

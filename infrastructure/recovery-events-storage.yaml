@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — recovery-event history storage (Step 33, SRS Knowledge
+  Base persistent fault/recovery history). Creates a dedicated DynamoDB
+  table for persisted recovery/escalation outcomes, kept completely
+  separate from the telemetry table (infrastructure/telemetry-storage.yaml)
+  and the anomaly-events table (infrastructure/anomaly-events-storage.yaml)
+  — this template does not read, modify, or depend on either. No IAM role
+  is created here. The table's ARN is exported
+  (SentinelGridRecoveryEventsTableArn) so the separate remediation Lambda
+  stack (infrastructure/remediation-lambdas.yaml) can grant its Planner/
+  Executor execution roles least-privilege dynamodb:PutItem/GetItem
+  access via !ImportValue, without either stack needing to know the
+  other's internal resource names. This table holds historical
+  recovery-EVENT records, not a current-node-state model. See
+  infrastructure/README.md.
+
+Resources:
+
+  RecoveryEventsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: SentinelGridRecoveryEvents
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: node_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: node_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+Outputs:
+  RecoveryEventsTableName:
+    Description: Name of the DynamoDB table storing persisted recovery/escalation events.
+    Value: !Ref RecoveryEventsTable
+    Export:
+      Name: SentinelGridRecoveryEventsTableName
+
+  RecoveryEventsTableArn:
+    Description: ARN of the DynamoDB recovery-events table.
+    Value: !GetAtt RecoveryEventsTable.Arn
+    Export:
+      Name: SentinelGridRecoveryEventsTableArn

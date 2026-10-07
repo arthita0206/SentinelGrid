@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# AWS credentials
+.aws/
+aws_credentials
+credentials.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Generated test/output data
+output/
+data/generated/
+*.out
+.coverage
+htmlcov/
+
+# Lambda packaging artifacts (infrastructure/package-anomaly-detector.sh)
+infrastructure/build/

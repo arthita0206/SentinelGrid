@@ -1,0 +1,276 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — CloudWatch observability dashboard (Step 30). Creates
+  exactly one AWS::CloudWatch::Dashboard (SentinelGrid-Observability)
+  that visualizes the existing custom metrics published by the Analyzer
+  and the remediation Executor (see infrastructure/README.md's Step 28
+  "CloudWatch metrics" section) — FaultDetectionCount, DetectionLatency,
+  RecoveryAttemptCount, RecoverySuccessCount, RecoveryFailureCount,
+  RecoveryLatency, UnresolvedFaultCount, all in the SentinelGrid
+  namespace, dimensioned only by Subsystem/FaultType (never node_id).
+  Creates NO alarms, NO SNS resources, and NO new metrics — this is a
+  read-only visualization layer over metrics Step 28 already publishes.
+  Does not modify any other stack. See infrastructure/README.md.
+
+Resources:
+  ObservabilityDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: SentinelGrid-Observability
+      DashboardBody: |
+        {
+          "start": "-PT6H",
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "markdown": "# SentinelGrid System Overview\n\n**Architecture:** AWS IoT Core (`sentinelgrid/telemetry`) -> SQS (buffered ingestion) -> SQS Consumer -> Anomaly Detector (Analyzer) -> Anomaly History (DynamoDB) + Remediation Trigger -> Step Functions (Planner -> Executor -> Verifier) -> CloudWatch Metrics.\n\nThe Analyzer classifies telemetry into fault types (e.g. `NODE_OVERLOAD`, `SENSOR_DROPOUT`, `NETWORK_PARTITION`, `DATA_CORRUPTION`) and severities. Automatic remediation runs autonomously for supported fault/severity combinations; everything else is escalated for manual intervention.\n\nAll metrics below use the `SentinelGrid` CloudWatch namespace, dimensioned by `Subsystem` and `FaultType` only -- never `node_id` -- to keep custom-metric cardinality bounded.\n\n**Chain:** IoT -> SQS -> Analyzer -> Remediation"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Fault Detection Count (power / NODE_OVERLOAD)",
+                "view": "timeSeries",
+                "region": "ap-south-1",
+                "stacked": false,
+                "metrics": [
+                  [
+                    "SentinelGrid",
+                    "FaultDetectionCount",
+                    "Subsystem",
+                    "power",
+                    "FaultType",
+                    "NODE_OVERLOAD"
+                  ]
+                ],
+                "period": 300,
+                "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Fault Detection Count -- by Subsystem / Fault Type",
+                "view": "timeSeries",
+                "region": "ap-south-1",
+                "stacked": false,
+                "metrics": [
+                  [
+                    {
+                      "expression": "SEARCH('{SentinelGrid,Subsystem,FaultType} MetricName=\"FaultDetectionCount\"', 'Sum', 300)",
+                      "id": "e1",
+                      "label": ""
+                    }
+                  ]
+                ],
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Detection Latency (Milliseconds)",
+                "view": "timeSeries",
+                "region": "ap-south-1",
+                "metrics": [
+                  [
+                    "SentinelGrid",
+                    "DetectionLatency",
+                    "Subsystem",
+                    "power",
+                    "FaultType",
+                    "NODE_OVERLOAD"
+                  ]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "yAxis": {
+                  "left": {
+                    "label": "Milliseconds"
+                  }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Recovery Outcomes",
+                "view": "timeSeries",
+                "region": "ap-south-1",
+                "stacked": false,
+                "metrics": [
+                  [
+                    "SentinelGrid",
+                    "RecoveryAttemptCount",
+                    "Subsystem",
+                    "power",
+                    "FaultType",
+                    "NODE_OVERLOAD",
+                    {
+                      "label": "RecoveryAttemptCount"
+                    }
+                  ],
+                  [
+                    "SentinelGrid",
+                    "RecoverySuccessCount",
+                    "Subsystem",
+                    "power",
+                    "FaultType",
+                    "NODE_OVERLOAD",
+                    {
+                      "label": "RecoverySuccessCount"
+                    }
+                  ],
+                  [
+                    "SentinelGrid",
+                    "RecoveryFailureCount",
+                    "Subsystem",
+                    "power",
+                    "FaultType",
+                    "NODE_OVERLOAD",
+                    {
+                      "label": "RecoveryFailureCount"
+                    }
+                  ]
+                ],
+                "period": 300,
+                "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 18,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Recovery Latency (Milliseconds, raw observation -- not MTTR)",
+                "view": "timeSeries",
+                "region": "ap-south-1",
+                "metrics": [
+                  [
+                    "SentinelGrid",
+                    "RecoveryLatency",
+                    "Subsystem",
+                    "power",
+                    "FaultType",
+                    "NODE_OVERLOAD"
+                  ]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "yAxis": {
+                  "left": {
+                    "label": "Milliseconds"
+                  }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 18,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Unresolved / Escalated Faults",
+                "view": "timeSeries",
+                "region": "ap-south-1",
+                "metrics": [
+                  [
+                    "SentinelGrid",
+                    "UnresolvedFaultCount",
+                    "Subsystem",
+                    "power",
+                    "FaultType",
+                    "NODE_OVERLOAD"
+                  ]
+                ],
+                "period": 300,
+                "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 24,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Fault Detection Count -- by Subsystem",
+                "view": "timeSeries",
+                "region": "ap-south-1",
+                "metrics": [
+                  [
+                    {
+                      "expression": "SELECT SUM(FaultDetectionCount) FROM SCHEMA(\"SentinelGrid\", Subsystem) GROUP BY Subsystem",
+                      "id": "q1",
+                      "period": 300
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 24,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Recovery Success Count -- by Subsystem",
+                "view": "timeSeries",
+                "region": "ap-south-1",
+                "metrics": [
+                  [
+                    {
+                      "expression": "SELECT SUM(RecoverySuccessCount) FROM SCHEMA(\"SentinelGrid\", Subsystem) GROUP BY Subsystem",
+                      "id": "q2",
+                      "period": 300
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "text",
+              "x": 0,
+              "y": 30,
+              "width": 24,
+              "height": 3,
+              "properties": {
+                "markdown": "**Caveats:** `RecoveryLatency` is a raw observation (remediation completion time minus the detection timestamp, which includes detection time under the current contract) -- it is **not** an aggregated MTTR figure; computing MTTR is a future reporting/analysis step. Detection accuracy and false-positive rate require labeled ground-truth outcomes and are not currently calculated or displayed."
+              }
+            }
+          ]
+        }
+
+Outputs:
+  DashboardName:
+    Description: Name of the SentinelGrid CloudWatch dashboard.
+    Value: !Ref ObservabilityDashboard
+
+  DashboardUrl:
+    Description: Console URL for the SentinelGrid CloudWatch dashboard.
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=SentinelGrid-Observability"

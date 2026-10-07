@@ -1,0 +1,381 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — Knowledge Base query interface (Step 35, SRS FR-6.3;
+  extended Step 40 with fleet listing + CORS; extended Step 42 with a
+  bounded fleet-wide event feed; extended Step 43 with a read-only
+  CloudWatch metrics feed). Creates the read-only SentinelGridKnowledgeQuery
+  Lambda, its execution role, an API Gateway HTTP API (7 GET routes,
+  $default stage, CORS restricted to one explicit origin), and three
+  Lambda invoke permissions (one per top-level resource path). Role
+  grants CloudWatch Logs; GetItem+Scan on SentinelGridNodeState;
+  Query+Scan on SentinelGridAnomalyEvents/SentinelGridRecoveryEvents;
+  cloudwatch:GetMetricData scoped to the SentinelGrid namespace (Step 43)
+  — all read-only, no write action anywhere. Does not touch
+  telemetry/remediation resources or Step Functions. Lambda code pinned
+  to an immutable S3 object version. See infrastructure/README.md.
+
+Parameters:
+  DeploymentBucketName:
+    Type: String
+    Description: >
+      Name of an EXISTING, VERSIONING-ENABLED S3 bucket containing the
+      packaged knowledge-query zip (see
+      infrastructure/package-knowledge-query.sh). This template does not
+      create this bucket — it must already exist, with versioning
+      enabled, and the package must already be uploaded to it, before
+      deploying this stack.
+
+  DeploymentPackageKey:
+    Type: String
+    Default: sentinelgrid/knowledge-query.zip
+    Description: S3 key of the packaged knowledge-query zip within DeploymentBucketName.
+
+  DeploymentPackageVersion:
+    Type: String
+    Description: >
+      S3 object VersionId of the packaged knowledge-query zip at
+      DeploymentBucketName/DeploymentPackageKey — obtained via
+      `aws s3api head-object` immediately after uploading (see
+      infrastructure/deploy-knowledge-query.sh). Required, no default —
+      pins the Lambda to one specific, immutable object version.
+
+  FrontendOrigin:
+    Type: String
+    Default: "http://localhost:5173"
+    Description: >
+      The single browser origin (scheme + host + port, no path, no
+      trailing slash) allowed to call this API via CORS (Step 40).
+      Defaults to the frontend's local Vite dev server origin. Deliberately
+      one explicit, configurable origin rather than "*" — see
+      infrastructure/README.md's Step 40 section. Override at deploy time
+      (e.g. FrontendOrigin=https://your-deployed-frontend.example) once
+      the frontend is ever actually hosted somewhere — not done by this
+      template, which does not deploy or host the frontend itself.
+
+Resources:
+
+  KnowledgeQueryExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridKnowledgeQueryExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridKnowledgeQueryLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/SentinelGridKnowledgeQuery:*"
+        - PolicyName: SentinelGridKnowledgeQueryNodeStateRead
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # GetItem -- node_id is the table's sole key, so a
+                  # single-item read (GET /nodes/{node_id} and friends)
+                  # never needs Query/Scan.
+                  #
+                  # Scan (Step 40, GET /nodes only) -- SentinelGridNodeState
+                  # has no secondary index a fleet-wide read could Query
+                  # against (see query_service.py's list_nodes() docstring
+                  # for the full reasoning); Scan is the only way to read
+                  # "all current node state", made safe by the Lambda code
+                  # always passing a bounded Limit (<=500, never caller-
+                  # supplied beyond that ceiling) -- this IAM grant permits
+                  # the action, the application code is what bounds it.
+                  # Scoped to this exact table ARN only -- no other table
+                  # in this project grants Scan to this role or any other.
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                Resource:
+                  - !ImportValue SentinelGridNodeStateTableArn
+        - PolicyName: SentinelGridKnowledgeQueryAnomalyEventsRead
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # Query -- (node_id, timestamp) key, no GSI/LSI exists
+                  # on this table, so the table's own ARN is sufficient
+                  # (no separate index ARN is needed). Used by the
+                  # existing per-node GET /nodes/{node_id}/anomalies.
+                  #
+                  # Scan (Step 42, GET /events only) -- there is no
+                  # fleet-wide (cross-node) timestamp index this table
+                  # could be Queried against; a bounded Scan is the only
+                  # way to read "recent anomalies across the fleet" (see
+                  # query_service.py's list_events() docstring). Made
+                  # safe the same way list_nodes()'s own Scan is: the
+                  # Lambda code always passes a fixed, internal,
+                  # never-caller-supplied Limit (500).
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !ImportValue SentinelGridAnomalyEventsTableArn
+        - PolicyName: SentinelGridKnowledgeQueryRecoveryEventsRead
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # See SentinelGridKnowledgeQueryAnomalyEventsRead's own
+                  # comment above -- identical reasoning applies here.
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !ImportValue SentinelGridRecoveryEventsTableArn
+        - PolicyName: SentinelGridKnowledgeQueryMetricsRead
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # Step 43, GET /metrics only. Read-only:
+                  # cloudwatch:GetMetricData ONLY -- never PutMetricData,
+                  # PutMetricAlarm, SetAlarmState, or DeleteAlarms (this
+                  # role has no write/alarm CloudWatch permission of any
+                  # kind, matching shared/metrics.py's PUBLISH-side role
+                  # (SentinelGridAnomalyDetectorExecutionRole and friends)
+                  # never being granted a READ permission either -- the
+                  # two directions are kept in strictly separate IAM
+                  # roles across this whole project).
+                  #
+                  # Resource MUST be "*" -- unlike DynamoDB's ARN-scoped
+                  # Resource above, cloudwatch:GetMetricData has no
+                  # ARN-level resource scoping at all (AWS's CloudWatch
+                  # metric-read/write APIs are not resource-scopable the
+                  # way a DynamoDB table ARN is).
+                  #
+                  # NO cloudwatch:namespace Condition here -- deliberately,
+                  # after live evidence, not by initial design. An earlier
+                  # version of this policy added one, mirroring
+                  # infrastructure/README.md's Step 28 PutMetricData
+                  # grants -- that condition is EFFECTIVE for
+                  # PutMetricData/ListMetrics/GetMetricStatistics (each has
+                  # a top-level `Namespace` request parameter AWS surfaces
+                  # as the `cloudwatch:namespace` context key), but
+                  # GetMetricData expresses its namespace nested inside
+                  # each `MetricDataQueries[].MetricStat.Metric.Namespace`
+                  # entry, which AWS does NOT surface as that context key.
+                  # `aws iam simulate-principal-policy` against the live
+                  # role confirmed this empirically: with the namespace
+                  # context key supplied manually the statement evaluates
+                  # "allowed", but with no context supplied (matching what
+                  # a real GetMetricData call actually sends) it evaluates
+                  # "implicitDeny" with `MissingContextValues:
+                  # [cloudwatch:namespace]" -- and the LIVE deployed
+                  # Lambda's own CloudWatch Logs showed the exact same
+                  # AccessDenied for every real request. The application
+                  # code, not IAM, is therefore the sole enforcement of
+                  # "SentinelGrid namespace only" for this action (see
+                  # metrics_service.py's `NAMESPACE` constant, which is
+                  # never caller-controlled -- GET /metrics has no
+                  # `namespace` query parameter at all).
+                  - cloudwatch:GetMetricData
+                Resource: "*"
+
+  KnowledgeQueryFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SentinelGridKnowledgeQuery
+      Description: >-
+        SentinelGrid Knowledge Base query interface (Step 35/40/42/43).
+        Read-only: node state, anomaly/recovery history and events
+        (DynamoDB), and CloudWatch metrics (GetMetricData). Never writes.
+      Runtime: python3.12
+      Architectures: [arm64]
+      Handler: lambda_functions.knowledge_query.handler.lambda_handler
+      Role: !GetAtt KnowledgeQueryExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NODE_STATE_TABLE_NAME: !ImportValue SentinelGridNodeStateTableName
+          ANOMALY_EVENTS_TABLE_NAME: !ImportValue SentinelGridAnomalyEventsTableName
+          RECOVERY_EVENTS_TABLE_NAME: !ImportValue SentinelGridRecoveryEventsTableName
+      Code:
+        S3Bucket: !Ref DeploymentBucketName
+        S3Key: !Ref DeploymentPackageKey
+        S3ObjectVersion: !Ref DeploymentPackageVersion
+
+  KnowledgeQueryApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: SentinelGridKnowledgeQueryApi
+      Description: >-
+        SentinelGrid Knowledge Base read-only query API (Step 35). CORS
+        (Step 40) restricted to one explicit configurable origin
+        (FrontendOrigin) so the local frontend dev server can call it; see
+        infrastructure/README.md.
+      ProtocolType: HTTP
+      # Step 40: makes this API callable from a browser tab. HTTP API's
+      # own CorsConfiguration handles the preflight OPTIONS request
+      # entirely within API Gateway -- no extra route, no Lambda
+      # invocation, no application code involved. Deliberately narrow:
+      # exactly one explicit origin (never "*"), exactly the one method
+      # this API actually has (GET), and only the request headers the
+      # frontend's fetch() calls actually send. No credentials/cookies
+      # are used by this API (see the Lambda's own "Security /
+      # authentication limitation" -- unauthenticated by design), so
+      # AllowCredentials is correctly omitted (defaults to false).
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref FrontendOrigin
+        AllowMethods:
+          - GET
+        AllowHeaders:
+          - Content-Type
+        MaxAge: 300
+
+  KnowledgeQueryIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt KnowledgeQueryFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  KnowledgeQueryRouteListNodes:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      RouteKey: "GET /nodes"
+      Target: !Sub "integrations/${KnowledgeQueryIntegration}"
+
+  KnowledgeQueryRouteListEvents:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      RouteKey: "GET /events"
+      Target: !Sub "integrations/${KnowledgeQueryIntegration}"
+
+  KnowledgeQueryRouteMetrics:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      RouteKey: "GET /metrics"
+      Target: !Sub "integrations/${KnowledgeQueryIntegration}"
+
+  KnowledgeQueryRouteCurrentState:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      RouteKey: "GET /nodes/{node_id}"
+      Target: !Sub "integrations/${KnowledgeQueryIntegration}"
+
+  KnowledgeQueryRouteAnomalies:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      RouteKey: "GET /nodes/{node_id}/anomalies"
+      Target: !Sub "integrations/${KnowledgeQueryIntegration}"
+
+  KnowledgeQueryRouteRecoveries:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      RouteKey: "GET /nodes/{node_id}/recoveries"
+      Target: !Sub "integrations/${KnowledgeQueryIntegration}"
+
+  KnowledgeQueryRouteSummary:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      RouteKey: "GET /nodes/{node_id}/summary"
+      Target: !Sub "integrations/${KnowledgeQueryIntegration}"
+
+  KnowledgeQueryStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref KnowledgeQueryApi
+      StageName: "$default"
+      AutoDeploy: true
+
+  KnowledgeQueryInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref KnowledgeQueryFunction
+      Principal: apigateway.amazonaws.com
+      # Scoped to THIS API's own execute-api ARN (not Resource: "*", not
+      # another API) and further restricted to any resource path starting
+      # with "nodes" (covering the bare /nodes fleet-listing route added
+      # in Step 40, plus all four /nodes/{node_id}[...] routes, and
+      # nothing else), for any method/stage -- API Gateway itself is the
+      # actual access-control boundary here (only 5 GET routes exist at
+      # all; there is no route for POST/PUT/PATCH/DELETE or any other
+      # resource path for API Gateway to invoke this Lambda through), so
+      # this permission is a secondary, defense-in-depth restriction, not
+      # the primary one. "nodes*" already matches the bare "nodes" path
+      # (a trailing "*" matches zero or more characters), so this
+      # permission needed no change for the new route.
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${KnowledgeQueryApi}/*/*/nodes*"
+
+  KnowledgeQueryInvokePermissionEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref KnowledgeQueryFunction
+      Principal: apigateway.amazonaws.com
+      # Step 42: a SECOND, separately-scoped permission for the new
+      # top-level "/events" resource path -- NOT folded into the
+      # existing "nodes*" permission above, which stays exactly as
+      # narrow as it always was. Same reasoning as that one: API Gateway
+      # itself is the real access boundary (only GET /events exists at
+      # this path; no write method), this is defense-in-depth.
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${KnowledgeQueryApi}/*/*/events*"
+
+  KnowledgeQueryInvokePermissionMetrics:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref KnowledgeQueryFunction
+      Principal: apigateway.amazonaws.com
+      # Step 43: a THIRD, separately-scoped permission for the new
+      # top-level "/metrics" resource path -- same one-permission-per-
+      # top-level-resource-path pattern as the "nodes*"/"events*"
+      # permissions above, never folded into either.
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${KnowledgeQueryApi}/*/*/metrics*"
+
+Outputs:
+  FunctionName:
+    Description: Name of the knowledge-query Lambda function.
+    Value: !Ref KnowledgeQueryFunction
+
+  FunctionArn:
+    Description: ARN of the knowledge-query Lambda function.
+    Value: !GetAtt KnowledgeQueryFunction.Arn
+
+  ExecutionRoleArn:
+    Description: ARN of the Lambda's execution role.
+    Value: !GetAtt KnowledgeQueryExecutionRole.Arn
+
+  HttpApiId:
+    Description: ID of the API Gateway HTTP API.
+    Value: !Ref KnowledgeQueryApi
+
+  HttpApiEndpoint:
+    Description: >-
+      Base invoke URL of the HTTP API (append e.g. /nodes/{node_id} to
+      query). The $default stage has no stage-name path segment.
+    Value: !GetAtt KnowledgeQueryApi.ApiEndpoint
+
+  StageName:
+    Description: Name of the deployed API Gateway stage.
+    Value: !Ref KnowledgeQueryStage
+
+  FrontendOriginAllowed:
+    Description: The single browser origin currently allowed via CORS (Step 40).
+    Value: !Ref FrontendOrigin

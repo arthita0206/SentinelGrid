@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — frontend static hosting (Step 45). Creates a PRIVATE S3
+  bucket (no public access, no S3 static-website-hosting endpoint) and a
+  CloudFront distribution that reads from it via Origin Access Control
+  (OAC) — the browser never talks to S3 directly. Serves the already-
+  built React SPA (frontend/dist/, built separately by
+  infrastructure/deploy-frontend-hosting.sh) over HTTPS with SPA-friendly
+  403/404 -> index.html routing so React Router's client-side routes
+  (e.g. /nodes/{node_id}) resolve on a direct load/refresh. Contains NO
+  application code — this template only provisions the bucket,
+  distribution, OAC, and the bucket policy scoped to this one
+  distribution. Does not touch the existing Knowledge Query API, any
+  Lambda, DynamoDB table, SQS queue, Step Functions state machine, or
+  CloudWatch resource.
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: sentinelgrid-frontend-401429382000
+    Description: >
+      Globally-unique S3 bucket name for the built frontend assets.
+      Bucket names are global across ALL AWS accounts, not just this
+      one — override this parameter if the default is ever taken by
+      another account.
+
+  PriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+    Description: >
+      CloudFront edge-location price class. PriceClass_100 (North
+      America + Europe only) is the cheapest option and the default here
+      — appropriate for a student/free-tier-conscious project with no
+      requirement to serve every AWS edge region.
+
+Resources:
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      # No AWS::S3::Bucket WebsiteConfiguration property anywhere in this
+      # resource -- deliberately NOT using S3's static-website-hosting
+      # endpoint (that endpoint is HTTP-only and requires the bucket/
+      # objects to be public). CloudFront reads this bucket via its
+      # private S3 REST API endpoint + Origin Access Control instead.
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  FrontendOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "SentinelGrid frontend (Step 45) -- ${BucketName}"
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: !Ref PriceClass
+        Origins:
+          - Id: FrontendS3Origin
+            # The bucket's REGIONAL REST API endpoint (NOT the S3
+            # static-website-hosting endpoint) -- required for
+            # Origin Access Control to work; the website endpoint does
+            # not support OAC/SigV4 at all.
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt FrontendOriginAccessControl.Id
+            S3OriginConfig:
+              # Deliberately empty -- the (legacy) Origin Access
+              # Identity mechanism is not used; OriginAccessControlId
+              # above is what actually authorizes CloudFront.
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          # AWS managed "Managed-CachingOptimized" policy -- honors the
+          # Cache-Control headers this project's own deploy script sets
+          # on each S3 object at upload time (short/no-cache for
+          # index.html, long-lived immutable for hashed JS/CSS/assets);
+          # no custom CloudFront::CachePolicy resource is needed for
+          # that distinction.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        # SPA routing: a private, OAC-protected bucket returns 403 (not
+        # 404) for a missing key, since ListBucket is intentionally not
+        # granted -- so both 403 and 404 must map to index.html for a
+        # direct load of a client-side route (e.g. /nodes/power-001) to
+        # resolve. React Router then reads the real URL from the browser
+        # and renders the matching route client-side. No Lambda@Edge or
+        # CloudFront Function is used -- this native custom-error-
+        # response mechanism is sufficient.
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        ViewerCertificate:
+          # No custom domain (Step 45 explicitly excludes Route 53/ACM
+          # unless one already exists and is required) -- the default
+          # *.cloudfront.net certificate is used, which forces HTTPS.
+          CloudFrontDefaultCertificate: true
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            # Principal is the CloudFront SERVICE, not "*" -- combined
+            # with the AWS:SourceArn condition below, only THIS ONE
+            # distribution (never any other AWS account's CloudFront
+            # distribution, never a direct/anonymous S3 request) can
+            # read objects from this bucket. No public access anywhere.
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}"
+
+Outputs:
+  BucketName:
+    Description: Name of the private S3 bucket holding the built frontend assets.
+    Value: !Ref FrontendBucket
+
+  BucketArn:
+    Description: ARN of the frontend S3 bucket.
+    Value: !GetAtt FrontendBucket.Arn
+
+  DistributionId:
+    Description: CloudFront distribution ID -- used for invalidations after each deploy.
+    Value: !Ref FrontendDistribution
+
+  DistributionDomainName:
+    Description: The distribution's *.cloudfront.net domain (no custom domain configured).
+    Value: !GetAtt FrontendDistribution.DomainName
+
+  FrontendUrl:
+    Description: Public HTTPS URL of the deployed SentinelGrid frontend.
+    Value: !Sub "https://${FrontendDistribution.DomainName}"

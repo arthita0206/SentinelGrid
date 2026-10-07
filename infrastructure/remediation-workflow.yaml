@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — Step Functions remediation-workflow orchestration
+  (Step 18). Creates one AWS::StepFunctions::StateMachine
+  (SentinelGridRemediationWorkflow, STANDARD) plus its execution role.
+  The deployed definition is the exact, unmodified contents of
+  step_functions/remediation_workflow.json via DefinitionS3Location, not
+  duplicated here. Its Task states' placeholder tokens (e.g.
+  ${RemediationPlannerFunctionArn}) are resolved at deploy time via
+  DefinitionSubstitutions, sourced from the three Step 17
+  CloudFormation exports (SentinelGridRemediationPlannerArn/
+  ExecutorArn/VerifierArn) — never hardcoded or invented ARNs. The
+  execution role grants exactly lambda:InvokeFunction on those same
+  three imported ARNs, nothing else. See infrastructure/README.md and
+  step_functions/README.md.
+
+Parameters:
+  DefinitionBucketName:
+    Type: String
+    Description: >
+      Name of an EXISTING, VERSIONING-ENABLED S3 bucket containing the
+      uploaded state-machine definition (see
+      infrastructure/deploy-remediation-workflow.sh). This template does
+      not create this bucket — it must already exist, with versioning
+      enabled, and step_functions/remediation_workflow.json must already
+      be uploaded to it, before deploying this stack.
+
+  DefinitionKey:
+    Type: String
+    Default: sentinelgrid/remediation-workflow.json
+    Description: S3 key of the uploaded state-machine definition within DefinitionBucketName.
+
+  DefinitionVersion:
+    Type: String
+    Description: >
+      S3 object VersionId of the uploaded state-machine definition at
+      DefinitionBucketName/DefinitionKey — obtained via
+      `aws s3api head-object` immediately after uploading (see
+      infrastructure/deploy-remediation-workflow.sh). Required, with no
+      default: this pins the state machine to one specific, immutable
+      object version, mirroring how anomaly-detector.yaml pins Lambda
+      code via DeploymentPackageVersion, so CloudFormation reliably
+      detects a definition change even when the bucket/key stay the
+      same. A VersionId only exists if DefinitionBucketName has S3
+      versioning enabled.
+
+Resources:
+  RemediationWorkflowExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridRemediationWorkflowRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridRemediationWorkflowInvokeLambdas
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                # Exactly the three Step 17 remediation Lambdas, imported
+                # by stable export name — never a wildcard, never a
+                # hardcoded/guessed ARN, and no other Lambda function may
+                # be invoked by this role.
+                Resource:
+                  - !ImportValue SentinelGridRemediationPlannerArn
+                  - !ImportValue SentinelGridRemediationExecutorArn
+                  - !ImportValue SentinelGridRemediationVerifierArn
+
+  RemediationWorkflowStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: SentinelGridRemediationWorkflow
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt RemediationWorkflowExecutionRole.Arn
+      DefinitionS3Location:
+        Bucket: !Ref DefinitionBucketName
+        Key: !Ref DefinitionKey
+        Version: !Ref DefinitionVersion
+      # Resolves the three unresolved placeholder tokens already present
+      # in step_functions/remediation_workflow.json (PlanRemediation/
+      # ExecuteRemediation/VerifyRemediation's Resource fields) into the
+      # real Lambda ARNs at deploy time — the canonical ASL file itself
+      # is never modified or duplicated for this purpose.
+      DefinitionSubstitutions:
+        RemediationPlannerFunctionArn: !ImportValue SentinelGridRemediationPlannerArn
+        RemediationExecutorFunctionArn: !ImportValue SentinelGridRemediationExecutorArn
+        VerifyRemediationFunctionArn: !ImportValue SentinelGridRemediationVerifierArn
+
+Outputs:
+  StateMachineArn:
+    Description: ARN of the SentinelGrid remediation-workflow state machine.
+    Value: !GetAtt RemediationWorkflowStateMachine.Arn
+
+  ExecutionRoleArn:
+    Description: ARN of the Step Functions execution role for the remediation workflow.
+    Value: !GetAtt RemediationWorkflowExecutionRole.Arn

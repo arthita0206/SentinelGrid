@@ -1,0 +1,107 @@
+{
+  "run_id": "20260914191207",
+  "count": 10,
+  "spacing_seconds": 20.0,
+  "events": [
+    {
+      "index": 0,
+      "node_id": "power-step36-perf-00-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:12:07.447450+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:12:07.447454+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:12:08.077087+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-179a1905a6ad0965d019d6977e69f2c9",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 1,
+      "node_id": "power-step36-perf-01-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:12:28.082326+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:12:28.082400+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:12:28.185556+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-966783e2012b78f627ddd2250723160d",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 2,
+      "node_id": "power-step36-perf-02-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:12:48.188684+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:12:48.188733+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:12:48.283207+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-3701364774a12319614be813f3544bd2",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 3,
+      "node_id": "power-step36-perf-03-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:13:08.287983+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:13:08.288244+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:13:08.338370+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-252a466ff348e9ad076e078e5d7c46a3",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 4,
+      "node_id": "power-step36-perf-04-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:13:28.343656+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:13:28.343713+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:13:28.390547+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-f377d04be6274789daf6efe3b3715124",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 5,
+      "node_id": "power-step36-perf-05-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:13:48.395729+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:13:48.396193+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:13:48.450617+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-5cbf13d16ed5a55ff0b118af9020a435",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 6,
+      "node_id": "power-step36-perf-06-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:14:08.455196+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:14:08.455680+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:14:08.599444+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-b2a331ea3deb74be37b9ecf240f1c083",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 7,
+      "node_id": "power-step36-perf-07-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:14:28.603671+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:14:28.603727+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:14:28.645714+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-750f0439a155d6c682f722c7d4bff270",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 8,
+      "node_id": "power-step36-perf-08-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:14:48.649819+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:14:48.649877+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:14:48.695747+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-33252413b381b296e85835e1929a2b7e",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    },
+    {
+      "index": 9,
+      "node_id": "power-step36-perf-09-20260914191207",
+      "telemetry_timestamp": "2026-09-14T19:15:08.700380+00:00",
+      "publish_wall_clock_before": "2026-09-14T19:15:08.700825+00:00",
+      "publish_wall_clock_after": "2026-09-14T19:15:08.794369+00:00",
+      "predicted_execution_name": "sentinelgrid-remediation-7fc23e8f75e176e6395e9e7cbaca3f49",
+      "subsystem": "power",
+      "fault_type": "NODE_OVERLOAD"
+    }
+  ]
+}

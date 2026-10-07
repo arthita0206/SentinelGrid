@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — persistent current node-state storage (Step 34, SRS
+  FR-6.1: "Maintain current node state in DynamoDB"). Creates a
+  dedicated DynamoDB table holding exactly ONE latest-known-state item
+  per node — node_id only as the primary key, no sort key. Kept
+  completely separate from telemetry history
+  (infrastructure/telemetry-storage.yaml), anomaly history
+  (infrastructure/anomaly-events-storage.yaml), and recovery history
+  (infrastructure/recovery-events-storage.yaml, Step 33) — this template
+  does not read, modify, or depend on any of them, and this table is
+  never treated as an event-history table. No IAM role is created here.
+  The table's ARN/name are exported (SentinelGridNodeStateTableArn/
+  SentinelGridNodeStateTableName) so the anomaly-detector and
+  remediation-lambdas stacks can grant least-privilege access via
+  !ImportValue, without either stack needing to know the other's
+  internal resource names. See infrastructure/README.md.
+
+Resources:
+
+  NodeStateTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: SentinelGridNodeState
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: node_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: node_id
+          KeyType: HASH
+
+Outputs:
+  NodeStateTableName:
+    Description: Name of the DynamoDB table storing current per-node state.
+    Value: !Ref NodeStateTable
+    Export:
+      Name: SentinelGridNodeStateTableName
+
+  NodeStateTableArn:
+    Description: ARN of the DynamoDB node-state table.
+    Value: !GetAtt NodeStateTable.Arn
+    Export:
+      Name: SentinelGridNodeStateTableArn

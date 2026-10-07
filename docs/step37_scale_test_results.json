@@ -1,0 +1,36 @@
+{
+  "run_id": "step37-scale",
+  "expected_total_events": 6000,
+  "actual_total_events": 6000,
+  "completion_pct": 100.0,
+  "missing_events": 0,
+  "duplicate_events": 0,
+  "missing_node_count": 0,
+  "missing_node_ids": [],
+  "under_count_nodes": {},
+  "over_count_nodes": {},
+  "unexpected_node_ids_matching_infix": [],
+  "queue_attributes": {
+    "ApproximateNumberOfMessages": "0",
+    "ApproximateNumberOfMessagesNotVisible": "0"
+  },
+  "dlq_attributes": {
+    "ApproximateNumberOfMessages": "0",
+    "ApproximateNumberOfMessagesNotVisible": "0"
+  },
+  "lambda_metrics": {
+    "SentinelGridSqsTelemetryConsumer": {
+      "invocations": 1347.0,
+      "errors": 0.0,
+      "throttles": 1455.0
+    },
+    "SentinelGridAnomalyDetector": {
+      "invocations": 5997.0,
+      "errors": 0.0,
+      "throttles": 3582.0
+    }
+  },
+  "test_start": "2026-09-14T20:08:01.540160+00:00",
+  "test_end": "2026-09-14T20:08:57.922958+00:00",
+  "analysis_time": "2026-09-14T20:20:49.548933+00:00"
+}

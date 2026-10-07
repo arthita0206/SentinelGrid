@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — CloudWatch alarm + SNS escalation infrastructure (Step
+  31, SRS FR-7.3). Creates exactly one AWS::SNS::Topic
+  (SentinelGrid-UnresolvedFaults) and exactly one AWS::CloudWatch::Alarm
+  (SentinelGrid-UnresolvedFaults-Alarm) that watches the existing
+  UnresolvedFaultCount metric (SentinelGrid namespace, published by
+  lambda_functions/remediation/{planner,verifier}.py — see Step 28/
+  infrastructure/README.md) and publishes to the topic when it fires.
+  Creates NO new metrics, NO Lambda/DynamoDB/SQS/Step Functions
+  resources, and NO SNS subscription — see infrastructure/README.md's
+  "CloudWatch Alerting / SNS Escalation (Step 31)" section for the full
+  design reasoning, including why this alarm is bound to one specific
+  Subsystem/FaultType dimension pair rather than an unbounded set. Does
+  not modify any other stack, the dashboard, or any application code.
+
+Parameters:
+  AlarmThreshold:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    Description: >
+      Minimum summed UnresolvedFaultCount within one evaluation period
+      that triggers the alarm. Default 1 — a single unresolved/escalated
+      fault observation is itself significant enough to escalate; this
+      is an event/count metric, not a continuous measurement, so there
+      is no meaningful lower threshold than 1.
+
+  AlarmPeriodSeconds:
+    Type: Number
+    Default: 300
+    MinValue: 60
+    Description: >
+      CloudWatch evaluation period, in seconds. Default 300 (5 minutes).
+      Must be a valid CloudWatch period for a standard-resolution custom
+      metric (60, or any multiple of 60) — this parameter does not
+      enforce that beyond MinValue: 60; supply a multiple of 60 when
+      overriding.
+
+Resources:
+  UnresolvedFaultsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: SentinelGrid-UnresolvedFaults
+      DisplayName: SentinelGrid Unresolved Faults
+      # No subscription is created here — see infrastructure/README.md
+      # "SNS subscription decision": no verified destination endpoint
+      # currently exists, and one must never be invented/hardcoded. No
+      # KmsMasterKeyId either — this is the project's first SNS
+      # resource, so there is no existing customer-managed-KMS-for-SNS
+      # precedent to mirror, and adding one now would be unnecessary
+      # complexity for a student project (see Step 31 instructions).
+
+  UnresolvedFaultsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: SentinelGrid-UnresolvedFaults-Alarm
+      AlarmDescription: >-
+        Fires when the SentinelGrid remediation system emits an
+        unresolved/escalated fault observation (UnresolvedFaultCount).
+        This is an event/count metric: a data point means "at least one
+        unresolved-fault observation occurred during this evaluation
+        period" — it does NOT mean a fault is continuously active, and
+        the alarm returning to OK does not mean the fault was resolved,
+        only that no new unresolved-fault observation occurred in the
+        most recent period. Scoped to Subsystem=power/FaultType=
+        NODE_OVERLOAD — the only dimension combination this project has
+        ever exercised live; see infrastructure/README.md for why a
+        single bounded alarm was chosen over an unbounded aggregate.
+      Namespace: SentinelGrid
+      MetricName: UnresolvedFaultCount
+      Dimensions:
+        - Name: Subsystem
+          Value: power
+        - Name: FaultType
+          Value: NODE_OVERLOAD
+      Statistic: Sum
+      Period: !Ref AlarmPeriodSeconds
+      EvaluationPeriods: 1
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref UnresolvedFaultsTopic
+      # Deliberately no OKActions/InsufficientDataActions — see Step 31
+      # instructions: escalation on ALARM is the only required behavior.
+
+Outputs:
+  TopicArn:
+    Description: ARN of the SentinelGrid unresolved-faults SNS topic.
+    Value: !Ref UnresolvedFaultsTopic
+
+  TopicName:
+    Description: Name of the SentinelGrid unresolved-faults SNS topic.
+    Value: !GetAtt UnresolvedFaultsTopic.TopicName
+
+  AlarmArn:
+    Description: ARN of the SentinelGrid unresolved-faults CloudWatch alarm.
+    Value: !GetAtt UnresolvedFaultsAlarm.Arn
+
+  AlarmName:
+    Description: Name of the SentinelGrid unresolved-faults CloudWatch alarm.
+    Value: !Ref UnresolvedFaultsAlarm

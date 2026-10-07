@@ -1,0 +1,47 @@
+{
+  "test_id": "step46-caseA2-overload-medium-singletick",
+  "fault_type_injected": "overload",
+  "subsystem": "power",
+  "target_node_id": "power-step46-caseA2-overload-medium-singletick-001",
+  "fault_id": "b1a0cc42-5d24-49aa-a86d-29a1606d9a1f",
+  "injection_start": "2026-09-16T11:11:23.398597+00:00",
+  "test_end": "2026-09-16T11:11:24.069535+00:00",
+  "ticks": 1,
+  "interval_seconds": 5.0,
+  "fault_duration_seconds": null,
+  "published_records": [
+    {
+      "tick": 0,
+      "published_at": "2026-09-16T11:11:24.069458+00:00",
+      "publish_success": null,
+      "payload": {
+        "node_id": "power-step46-caseA2-overload-medium-singletick-001",
+        "subsystem": "power",
+        "timestamp": "2026-09-16T11:11:23.398959+00:00",
+        "status": "ONLINE",
+        "data": {
+          "load": 96.95,
+          "voltage": 229.22,
+          "frequency": 49.95
+        }
+      },
+      "local_expected_detection": {
+        "detected": true,
+        "fault_type": "NODE_OVERLOAD",
+        "severity": "MEDIUM",
+        "node_id": "power-step46-caseA2-overload-medium-singletick-001",
+        "subsystem": "power",
+        "timestamp": "2026-09-16T11:11:23.398959+00:00",
+        "reason": "Field 'load' value 96.95 is within the overload band (95.0, 100.0).",
+        "evidence": {
+          "field": "load",
+          "value": 96.95,
+          "overload_range": [
+            95.0,
+            100.0
+          ]
+        }
+      }
+    }
+  ]
+}

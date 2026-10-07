@@ -1,0 +1,378 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — dedicated least-privilege project operator identity
+  (Step 48). Creates ONE resource: IAM role SentinelGridOperatorRole,
+  assumable via sts:AssumeRole by an authenticated in-account principal
+  (today, only root — see docs/operator-identity.md for why no IAM
+  Identity Center / Organizations instance exists and a role-assumption
+  pattern was chosen over a new IAM user with static keys). Does NOT
+  replace the 10 existing SentinelGrid service-execution roles, unchanged
+  and still assumed only by their own AWS services. Permissions are
+  scoped to SentinelGrid-prefixed ARNs wherever the API supports
+  resource-level ARNs; unavoidable Resource:"*" cases (no resource-level
+  ARN support, e.g. ValidateTemplate/ListTables/GetMetricData) are
+  documented in docs/operator-identity.md. No iam:*/organizations:*/
+  account:*/billing:*/AdministratorAccess-equivalent permission is
+  granted. iam:PassRole is granted only on the 10 exact existing
+  service-role ARNs, each conditioned on iam:PassedToService.
+
+Parameters:
+  TrustedPrincipalArn:
+    Type: String
+    Default: "arn:aws:iam::401429382000:root"
+    Description: >
+      The principal allowed to assume SentinelGridOperatorRole. Defaults
+      to the account's root ARN — this is the standard AWS pattern for
+      "any authenticated principal in this account may assume this role
+      if their own identity-based policy also grants them
+      sts:AssumeRole on it"; it does not itself widen access, since
+      today only the root user has any credentials in this account (see
+      docs/operator-identity.md).
+
+Resources:
+  SentinelGridOperatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridOperatorRole
+      Description: >
+        Dedicated least-privilege human-operator identity for SentinelGrid
+        deployment/maintenance/validation (Step 48). Not a service
+        execution role. See docs/operator-identity.md.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref TrustedPrincipalArn
+            Action: sts:AssumeRole
+      MaxSessionDuration: 3600
+      Policies:
+        # ---- Deployment: CloudFormation stack lifecycle ----
+        - PolicyName: SentinelGridOperatorCloudFormationDeploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: StackLifecycleScoped
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                  - cloudformation:ListStackResources
+                  - cloudformation:TagResource
+                Resource: "arn:aws:cloudformation:ap-south-1:401429382000:stack/sentinelgrid-*/*"
+              - Sid: AccountLevelReadNoResourceArnSupport
+                Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ListStacks
+                Resource: "*"
+
+        # ---- Deployment: manage ONLY the 10 existing SentinelGrid*
+        #      service-execution roles, plus tightly-scoped PassRole ----
+        - PolicyName: SentinelGridOperatorIAMForDeployment
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ManageOnlySentinelGridPrefixedRoles
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource: "arn:aws:iam::401429382000:role/SentinelGrid*"
+              - Sid: PassRoleToLambdaExactArnsOnly
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - arn:aws:iam::401429382000:role/SentinelGridAnomalyDetectorExecutionRole
+                  - arn:aws:iam::401429382000:role/SentinelGridSqsConsumerExecutionRole
+                  - arn:aws:iam::401429382000:role/SentinelGridRemediationTriggerExecutionRole
+                  - arn:aws:iam::401429382000:role/SentinelGridRemediationPlannerRole
+                  - arn:aws:iam::401429382000:role/SentinelGridRemediationExecutorRole
+                  - arn:aws:iam::401429382000:role/SentinelGridRemediationVerifierRole
+                  - arn:aws:iam::401429382000:role/SentinelGridKnowledgeQueryExecutionRole
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+              - Sid: PassRoleToStatesExactArnOnly
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - arn:aws:iam::401429382000:role/SentinelGridRemediationWorkflowRole
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: states.amazonaws.com
+              - Sid: PassRoleToIotExactArnsOnly
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - arn:aws:iam::401429382000:role/SentinelGridIoTToDynamoDBRole
+                  - arn:aws:iam::401429382000:role/SentinelGridIoTToSqsRole
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: iot.amazonaws.com
+
+        # ---- Deployment + Validation: Lambda ----
+        - PolicyName: SentinelGridOperatorLambdaDeployAndInvoke
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LambdaDeployScoped
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:GetPolicy
+                  - lambda:TagResource
+                  - lambda:ListTags
+                  - lambda:GetFunctionUrlConfig
+                Resource: "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGrid*"
+              - Sid: LambdaInvokeForValidationScoped
+                Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGrid*"
+              - Sid: LambdaListNoResourceArnSupport
+                Effect: Allow
+                Action: lambda:ListFunctions
+                Resource: "*"
+
+        # ---- Deployment + Validation: DynamoDB (read-only data access —
+        #      no PutItem/UpdateItem/DeleteItem; data mutation stays with
+        #      the application's own Lambda execution roles) ----
+        - PolicyName: SentinelGridOperatorDynamoDB
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TableManageScoped
+                Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:UpdateTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:DescribeContinuousBackups
+                  - dynamodb:UpdateContinuousBackups
+                  - dynamodb:DescribeTimeToLive
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                Resource: "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGrid*"
+              - Sid: ReadOnlyDataInspectionScoped
+                Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                Resource: "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGrid*"
+              - Sid: ListTablesNoResourceArnSupport
+                Effect: Allow
+                Action: dynamodb:ListTables
+                Resource: "*"
+
+        # ---- Deployment + Read-only: SQS ----
+        - PolicyName: SentinelGridOperatorSQS
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: QueueManageAndInspectScoped
+                Effect: Allow
+                Action:
+                  - sqs:CreateQueue
+                  - sqs:DeleteQueue
+                  - sqs:SetQueueAttributes
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                  - sqs:TagQueue
+                  - sqs:ListQueueTags
+                Resource: "arn:aws:sqs:ap-south-1:401429382000:SentinelGrid*"
+              - Sid: ListQueuesNoResourceArnSupport
+                Effect: Allow
+                Action: sqs:ListQueues
+                Resource: "*"
+
+        # ---- Deployment + Validation: IoT (rule management scoped to
+        #      the sentinelgrid_ rule-name prefix; iot-data:Publish scoped
+        #      to the sentinelgrid/* topic namespace only — same telemetry
+        #      topic the simulator already uses, for controlled test
+        #      publishing, never a broader iot:* grant) ----
+        - PolicyName: SentinelGridOperatorIoT
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TopicRuleManageScoped
+                Effect: Allow
+                Action:
+                  - iot:CreateTopicRule
+                  - iot:ReplaceTopicRule
+                  - iot:DeleteTopicRule
+                  - iot:GetTopicRule
+                  - iot:TagResource
+                Resource: "arn:aws:iot:ap-south-1:401429382000:rule/sentinelgrid_*"
+              - Sid: ListTopicRulesNoResourceArnSupport
+                Effect: Allow
+                Action: iot:ListTopicRules
+                Resource: "*"
+              - Sid: PublishForControlledTestingScoped
+                Effect: Allow
+                Action: iot-data:Publish
+                Resource: "arn:aws:iot:ap-south-1:401429382000:topic/sentinelgrid/*"
+
+        # ---- Deployment + Validation: Step Functions ----
+        - PolicyName: SentinelGridOperatorStepFunctions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: StateMachineManageAndStartScoped
+                Effect: Allow
+                Action:
+                  - states:CreateStateMachine
+                  - states:UpdateStateMachine
+                  - states:DeleteStateMachine
+                  - states:DescribeStateMachine
+                  - states:TagResource
+                  - states:StartExecution
+                Resource: "arn:aws:states:ap-south-1:401429382000:stateMachine:SentinelGrid*"
+              - Sid: ExecutionInspectionScoped
+                Effect: Allow
+                Action:
+                  - states:DescribeExecution
+                  - states:GetExecutionHistory
+                Resource: "arn:aws:states:ap-south-1:401429382000:execution:SentinelGrid*:*"
+              - Sid: ListStateMachinesNoResourceArnSupport
+                Effect: Allow
+                Action: states:ListStateMachines
+                Resource: "*"
+
+        # ---- Deployment + Read-only: API Gateway v2 (the API Gateway
+        #      IAM action namespace uses synthetic HTTP-verb-style
+        #      actions against a REST-path-shaped ARN, not per-service
+        #      named actions — this is an AWS-defined permission model,
+        #      not a project choice) ----
+        - PolicyName: SentinelGridOperatorApiGateway
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ManageExistingKnowledgeQueryApiScoped
+                Effect: Allow
+                Action:
+                  - apigateway:GET
+                  - apigateway:POST
+                  - apigateway:PUT
+                  - apigateway:PATCH
+                  - apigateway:DELETE
+                Resource:
+                  - "arn:aws:apigateway:ap-south-1::/apis/m1uqr1hsq3"
+                  - "arn:aws:apigateway:ap-south-1::/apis/m1uqr1hsq3/*"
+              - Sid: ListApisCollectionLevelReadOnly
+                Effect: Allow
+                Action: apigateway:GET
+                Resource: "arn:aws:apigateway:ap-south-1::/apis"
+
+        # ---- Deployment + Read-only: CloudWatch alarms/dashboards +
+        #      SNS (management scoped; metric read APIs use Resource:"*"
+        #      because CloudWatch's GetMetricData/ListMetrics/
+        #      DescribeAlarms/ListDashboards have no resource-level ARN
+        #      support at all — the same documented, unavoidable
+        #      constraint already noted for the service roles in
+        #      Step 43/47; sns:Publish and sns:Subscribe are deliberately
+        #      NOT granted — no deploy script invokes them
+        #      programmatically, and Step 48 explicitly excludes
+        #      publishing SNS messages) ----
+        - PolicyName: SentinelGridOperatorCloudWatchAndSNS
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AlarmAndDashboardManageScoped
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:PutDashboard
+                  - cloudwatch:DeleteDashboards
+                  - cloudwatch:GetDashboard
+                  - cloudwatch:TagResource
+                Resource:
+                  - "arn:aws:cloudwatch:ap-south-1:401429382000:alarm:SentinelGrid-*"
+                  - "arn:aws:cloudwatch:ap-south-1:401429382000:dashboard/SentinelGrid-*"
+              - Sid: MetricAndAlarmReadNoResourceArnSupport
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:ListMetrics
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:ListDashboards
+                Resource: "*"
+              - Sid: SnsTopicManageScoped
+                Effect: Allow
+                Action:
+                  - sns:CreateTopic
+                  - sns:DeleteTopic
+                  - sns:SetTopicAttributes
+                  - sns:GetTopicAttributes
+                  - sns:ListSubscriptionsByTopic
+                  - sns:TagResource
+                Resource: "arn:aws:sns:ap-south-1:401429382000:SentinelGrid-*"
+              - Sid: SnsListTopicsNoResourceArnSupport
+                Effect: Allow
+                Action: sns:ListTopics
+                Resource: "*"
+
+        # ---- Deployment + Validation: S3 deployment bucket ONLY (never
+        #      the blocked/undeployed CloudFront frontend-hosting bucket
+        #      — Step 45/CloudFront is explicitly out of scope for this
+        #      step) + CloudWatch Logs read for the existing SentinelGrid
+        #      Lambda log groups (used by scripts/step36_analyze_results.py
+        #      for latency validation) ----
+        - PolicyName: SentinelGridOperatorS3DeployBucketAndLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: DeploymentBucketScoped
+                Effect: Allow
+                Action:
+                  - s3:GetBucketVersioning
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - "arn:aws:s3:::sentinelgrid-lambda-deploy-401429382000"
+                  - "arn:aws:s3:::sentinelgrid-lambda-deploy-401429382000/*"
+              - Sid: LogsReadOnlyScoped
+                Effect: Allow
+                Action:
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:FilterLogEvents
+                  - logs:GetLogEvents
+                Resource: "arn:aws:logs:ap-south-1:401429382000:log-group:/aws/lambda/SentinelGrid*"
+
+Outputs:
+  OperatorRoleArn:
+    Description: ARN of the dedicated SentinelGrid operator IAM role.
+    Value: !GetAtt SentinelGridOperatorRole.Arn
+  OperatorRoleName:
+    Description: Name of the dedicated SentinelGrid operator IAM role.
+    Value: !Ref SentinelGridOperatorRole

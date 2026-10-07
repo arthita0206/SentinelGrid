@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — Kinesis telemetry ingestion layer (Step 24, FR-3.1/3.2/3.3).
+  Creates one Kinesis Data Stream (SentinelGridTelemetryStream, ON_DEMAND
+  capacity, AWS-managed KMS encryption, configurable retention defaulting
+  to 24h) and a new AWS IoT topic rule that additionally routes the
+  existing sentinelgrid/telemetry topic into it, partitioned by
+  subsystem, via a dedicated least-privilege IAM role. This is purely
+  additive: it does not touch telemetry-storage.yaml, anomaly-detector.yaml,
+  anomaly-detection-rule.yaml, or any remediation stack — the existing
+  IoT -> DynamoDB and IoT -> Anomaly Detector rules keep running
+  unchanged, alongside this new one. No consumer reads from this stream
+  yet; that is a separate, later step. See infrastructure/README.md.
+
+Parameters:
+  RetentionPeriodHours:
+    Type: Number
+    Default: 24
+    MinValue: 24
+    MaxValue: 8760
+    Description: >
+      FR-3.2's configurable retention window, in hours. Default 24 (the
+      Kinesis minimum/standard retention — no compromise from the SRS's
+      stated default). Values above 24 use Kinesis "long-term retention",
+      which increases cost — see infrastructure/README.md's cost notes.
+
+Resources:
+  TelemetryStream:
+    Type: AWS::Kinesis::Stream
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: SentinelGridTelemetryStream
+      RetentionPeriodHours: !Ref RetentionPeriodHours
+      StreamModeDetails:
+        StreamMode: ON_DEMAND
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: alias/aws/kinesis
+
+  IoTToKinesisRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridIoTToKinesisRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridIoTKinesisPutRecord
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesis:PutRecord
+                Resource:
+                  - !GetAtt TelemetryStream.Arn
+
+  TelemetryToKinesisRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: sentinelgrid_telemetry_to_kinesis
+      TopicRulePayload:
+        AwsIotSqlVersion: "2016-03-23"
+        Sql: "SELECT * FROM 'sentinelgrid/telemetry'"
+        RuleDisabled: false
+        Actions:
+          - Kinesis:
+              StreamName: !Ref TelemetryStream
+              PartitionKey: "${subsystem}"
+              RoleArn: !GetAtt IoTToKinesisRole.Arn
+
+Outputs:
+  StreamName:
+    Description: Name of the SentinelGrid telemetry Kinesis stream.
+    Value: !Ref TelemetryStream
+
+  StreamArn:
+    Description: ARN of the SentinelGrid telemetry Kinesis stream.
+    Value: !GetAtt TelemetryStream.Arn
+
+  RuleArn:
+    Description: ARN of the IoT Core topic rule that routes telemetry into Kinesis.
+    Value: !GetAtt TelemetryToKinesisRule.Arn
+
+  IoTToKinesisRoleArn:
+    Description: ARN of the dedicated IAM role the IoT rule assumes to write to Kinesis.
+    Value: !GetAtt IoTToKinesisRole.Arn

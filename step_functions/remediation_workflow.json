@@ -1,0 +1,193 @@
+{
+  "Comment": "SentinelGrid remediation orchestration workflow (Step 14, local design only). Orchestrates the existing local pipeline detect_telemetry() -> RemediationEngine.plan() -> RemediationExecutor.execute() once each stage is wrapped in its own AWS Lambda function. This state machine performs NO fault-classification or remediation-selection logic itself -- every Task state below is a placeholder integration point for a Lambda that will call into lambda_functions/anomaly_detector/detector.py or remediation/engine.py; the business logic stays entirely in that Python code. Lambda Resource ARNs are left as CloudFormation Fn::Sub-style placeholders (e.g. ${RemediationPlannerFunctionArn}) rather than hardcoded account-specific ARNs -- this file is not deployable as-is; a future CloudFormation template will substitute real ARNs into DefinitionString. Not deployed, not registered with AWS Step Functions, and no Lambda referenced here exists yet. STEP 51 ADDENDUM (FR-5.4): this workflow was deployed live starting at Step 18 and has been exercised repeatedly since (Steps 19-46); the 'not deployed' text above describes only this file's original Step-14 authoring-time context and is left unmodified for historical continuity. Step 51 adds a bounded, configurable retry mechanism for failed recovery attempts (ExecuteRemediation/VerifyRemediation), addressing the FR-5.4 gap identified in Step 50 (the workflow previously escalated immediately on any single failure, with no retry). See docs/step51_remediation_retry.md for the full design rationale, counter semantics, and validation evidence. AWS Step Functions' native Retry field cannot take a runtime JSONPath value for MaxAttempts, so this uses an explicit Choice+Pass counter loop (ValidateMaxRetries/UseProvidedMaxRetries/UseDefaultMaxRetries/CheckExecutionSuccess/CheckRetryLimit/IncrementRetryCount, below) instead -- a deliberate, valid, deployable ASL pattern, not native Retry syntax.",
+  "StartAt": "CheckAnomaly",
+  "States": {
+    "CheckAnomaly": {
+      "Type": "Choice",
+      "Comment": "Branches purely on DetectionResult.detected, exactly as computed by the existing local anomaly detector (lambda_functions/anomaly_detector/detector.py). No detection logic is reimplemented here.",
+      "Choices": [
+        {
+          "Variable": "$.detected",
+          "BooleanEquals": true,
+          "Next": "PrepareRemediationPlanning"
+        }
+      ],
+      "Default": "NoAnomaly"
+    },
+
+    "NoAnomaly": {
+      "Type": "Succeed",
+      "Comment": "Terminal state for detected == false: no remediation is required. Output is the original DetectionResult, unmodified."
+    },
+
+    "PrepareRemediationPlanning": {
+      "Type": "Pass",
+      "Comment": "Pure data-shaping, not business logic: wraps the raw DetectionResult input under a 'detection_result' key so every downstream state accumulates a single envelope {detection_result, retry_count, max_retries, remediation_plan, remediation_result, verification} without ever discarding the original detection fields (node_id, subsystem, fault_type, severity, timestamp all remain intact under detection_result throughout the rest of the workflow). This state exists only because Task states merge their own result back into the state's raw input via ResultPath, and the target data-flow contract nests the original detection under an explicit key rather than leaving its fields at the top level. STEP 51: also initializes retry_count=0 here, once, at the very start of the accumulating envelope -- the retry counter's single source of truth for the rest of this execution. If the raw input happens to carry an optional top-level 'max_retries' field (see ValidateMaxRetries below), it is preserved unchanged inside detection_result by this same '$' wrap -- no separate handling is needed here for that field to survive.",
+      "Parameters": {
+        "detection_result.$": "$",
+        "retry_count": 0
+      },
+      "Next": "ValidateMaxRetries"
+    },
+
+    "ValidateMaxRetries": {
+      "Type": "Choice",
+      "Comment": "STEP 51 (FR-5.4): determines the effective max_retries for this execution. The workflow input MAY optionally carry a top-level 'max_retries' field (see docs/step51_remediation_retry.md) alongside the existing flat DetectionResult fields -- this is fully backward compatible: every pre-Step-51 caller (the deployed RemediationTrigger Lambda, and every Step 19/23/27/32/33/34/46-style direct-DetectionResult test input) omits it entirely and gets the documented default. This Choice validates max_retries is present, numeric, and within the bounded range [0, 5] (see MIN_MAX_RETRIES/MAX_MAX_RETRIES in docs/step51_remediation_retry.md) before trusting it -- ANY invalid case (absent, non-numeric, negative, or greater than 5) falls through to the Default branch and uses the documented safe default (2) instead, uniformly, rather than silently clamping to a boundary value. This IsPresent-guarded 'And' pattern is the AWS-documented way to safely test a possibly-absent field's value without causing a States.Runtime error.",
+      "Choices": [
+        {
+          "And": [
+            {"Variable": "$.detection_result.max_retries", "IsPresent": true},
+            {"Variable": "$.detection_result.max_retries", "IsNumeric": true},
+            {"Variable": "$.detection_result.max_retries", "NumericGreaterThanEquals": 0},
+            {"Variable": "$.detection_result.max_retries", "NumericLessThanEquals": 5}
+          ],
+          "Next": "UseProvidedMaxRetries"
+        }
+      ],
+      "Default": "UseDefaultMaxRetries"
+    },
+
+    "UseProvidedMaxRetries": {
+      "Type": "Pass",
+      "Comment": "STEP 51: promotes the caller-provided, already-validated max_retries value to a clean top-level $.max_retries field (sibling to detection_result/retry_count) so every downstream state compares against one stable path regardless of whether the value came from the caller or the default branch below.",
+      "Parameters": {
+        "detection_result.$": "$.detection_result",
+        "retry_count.$": "$.retry_count",
+        "max_retries.$": "$.detection_result.max_retries"
+      },
+      "Next": "PlanRemediation"
+    },
+
+    "UseDefaultMaxRetries": {
+      "Type": "Pass",
+      "Comment": "STEP 51: no valid max_retries was supplied (absent, non-numeric, negative, or >5) -- uses the documented safe default of 2 retries after the initial attempt (3 total possible attempts). Preserves this project's pre-Step-51 backward compatibility: every historical caller that never knew about max_retries gets this exact, documented, bounded behavior rather than an error.",
+      "Parameters": {
+        "detection_result.$": "$.detection_result",
+        "retry_count.$": "$.retry_count",
+        "max_retries": 2
+      },
+      "Next": "PlanRemediation"
+    },
+
+    "PlanRemediation": {
+      "Type": "Task",
+      "Comment": "Placeholder integration for a future RemediationPlanner Lambda that will call the existing local RemediationEngine.plan() (remediation/engine.py). Contract: input is one DetectionResult, output is one RemediationPlan. Do not duplicate remediation/engine.py's fault-to-action mapping here. STEP 51: deliberately has NO Catch/retry wired to it -- FR-5.4 is scoped to retrying failed RECOVERY (execution/verification), not planning; an unexpected Planner failure remains an unhandled state-machine error exactly as before Step 51 (a separate, pre-existing gap, not addressed by this step -- see docs/step51_remediation_retry.md's explicit scope-boundary discussion).",
+      "Resource": "${RemediationPlannerFunctionArn}",
+      "InputPath": "$.detection_result",
+      "ResultPath": "$.remediation_plan",
+      "Next": "CheckAutomaticRemediation"
+    },
+
+    "CheckAutomaticRemediation": {
+      "Type": "Choice",
+      "Comment": "Branches purely on RemediationPlan.automatic, as already decided by RemediationEngine.plan(). automatic == false covers every escalation case that engine already produces: HIGH/CRITICAL NODE_OVERLOAD, INVALID_INPUT, an unknown/unsupported fault type, and a DetectionResult missing required fields -- none of that policy is reimplemented here. STEP 51: this decision is completely unaffected by the retry mechanism -- a non-automatic plan goes straight to Escalate exactly as before, never entering the retry loop, never becoming automatic because a retry budget exists.",
+      "Choices": [
+        {
+          "Variable": "$.remediation_plan.automatic",
+          "BooleanEquals": true,
+          "Next": "ExecuteRemediation"
+        }
+      ],
+      "Default": "Escalate"
+    },
+
+    "ExecuteRemediation": {
+      "Type": "Task",
+      "Comment": "Placeholder integration for a future RemediationExecutor Lambda that will call the existing local RemediationExecutor.execute() (remediation/engine.py) -- currently a safe, AWS-independent simulation, unmodified by this workflow. Contract: input is one RemediationPlan, output is one RemediationResult. STEP 51: this is the retry loop's re-entry point -- IncrementRetryCount (below) always routes back here, so a retried attempt re-runs the exact same Lambda with the exact same accumulated remediation_plan, never a new Step Functions execution (see docs/step51_remediation_retry.md 'Idempotency / safety'). The Catch below now routes to CheckRetryLimit instead of directly to Escalate, so a Lambda-level invocation failure (timeout, throttling, an uncaught exception) is retried up to max_retries times before escalating, exactly like a returned success=false result (see CheckExecutionSuccess).",
+      "Resource": "${RemediationExecutorFunctionArn}",
+      "InputPath": "$",
+      "ResultPath": "$.remediation_result",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "CheckRetryLimit"
+        }
+      ],
+      "Next": "CheckExecutionSuccess"
+    },
+
+    "CheckExecutionSuccess": {
+      "Type": "Choice",
+      "Comment": "STEP 51 (FR-5.4): new state. Before Step 51, the workflow proceeded straight from ExecuteRemediation to VerifyRemediation regardless of RemediationResult.success -- a returned (non-throwing) execution failure was never actually detected. This Choice closes that gap: branches on the boolean RemediationResult.success (the executor Lambda's own orchestration-level outcome flag, not a duplicated fault-type/action mapping), continuing to VerifyRemediation only on success == true; any other value (false, or absent) is treated as a failed recovery attempt and routed to CheckRetryLimit, exactly like a Lambda-level Catch.",
+      "Choices": [
+        {
+          "Variable": "$.remediation_result.success",
+          "BooleanEquals": true,
+          "Next": "VerifyRemediation"
+        }
+      ],
+      "Default": "CheckRetryLimit"
+    },
+
+    "VerifyRemediation": {
+      "Type": "Task",
+      "Comment": "Placeholder integration for a future verification step that determines whether the executed remediation actually succeeded. Contract: output is a structured verification result, e.g. {'verified': true} or {'verified': false}. Does NOT implement any real sensor/network verification mechanism -- that is intentionally deferred. STEP 51: a Lambda-level invocation failure here now also routes to CheckRetryLimit (was: straight to Escalate) -- a failed verification attempt (whether the Lambda threw, or it returned verified=false) is retried up to max_retries times, the same budget shared with ExecuteRemediation failures (see docs/step51_remediation_retry.md 'Failure definitions').",
+      "Resource": "${VerifyRemediationFunctionArn}",
+      "InputPath": "$",
+      "ResultPath": "$.verification",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "CheckRetryLimit"
+        }
+      ],
+      "Next": "CheckVerification"
+    },
+
+    "CheckVerification": {
+      "Type": "Choice",
+      "Comment": "A Task state cannot branch on its own result in Amazon States Language, so this Choice state exists purely to route on the boolean VerifyRemediation.verified -- it contains no verification logic itself. STEP 51: verified == false now routes to CheckRetryLimit (was: straight to Escalate) -- see docs/step51_remediation_retry.md.",
+      "Choices": [
+        {
+          "Variable": "$.verification.verified",
+          "BooleanEquals": true,
+          "Next": "Success"
+        }
+      ],
+      "Default": "CheckRetryLimit"
+    },
+
+    "CheckRetryLimit": {
+      "Type": "Choice",
+      "Comment": "STEP 51 (FR-5.4): the single, shared retry-decision point reached from all four failure paths (ExecuteRemediation's Catch, CheckExecutionSuccess's Default, VerifyRemediation's Catch, CheckVerification's Default). Compares the running retry_count against the effective max_retries USING NumericLessThanPath, a native ASL comparison-of-two-paths operator -- this is the valid, deployable alternative to writing an invalid runtime JSONPath into Step Functions' native Retry.MaxAttempts (which only accepts a literal integer in the state machine definition, never a runtime value). retry_count < max_retries -> one more attempt remains: increment and retry. Otherwise (retry_count >= max_retries, including the max_retries=0 case where this is true on the very first failure) -> the retry budget is exhausted -> Escalate, preserving whatever remediation_result/verification/error data the last attempt produced.",
+      "Choices": [
+        {
+          "Variable": "$.retry_count",
+          "NumericLessThanPath": "$.max_retries",
+          "Next": "IncrementRetryCount"
+        }
+      ],
+      "Default": "Escalate"
+    },
+
+    "IncrementRetryCount": {
+      "Type": "Pass",
+      "Comment": "STEP 51 (FR-5.4): increments retry_count by exactly 1 using the States.MathAdd intrinsic function (Amazon States Language's native, valid arithmetic helper for Parameters/ResultSelector fields -- ASL has no bare '+' operator, so this is the correct mechanism, not a workaround). Preserves detection_result/remediation_plan/max_retries unchanged; deliberately does NOT carry forward the just-failed attempt's remediation_result/verification/error, since ExecuteRemediation (this state's only Next) immediately regenerates both via a fresh attempt -- nothing downstream ever reads the stale values from a state this Pass always transitions away from. Always routes straight back to ExecuteRemediation -- the SAME Step Functions execution, never a new one (see docs/step51_remediation_retry.md 'Idempotency / safety': no new StartExecution call is made anywhere in this ASL).",
+      "Parameters": {
+        "detection_result.$": "$.detection_result",
+        "remediation_plan.$": "$.remediation_plan",
+        "max_retries.$": "$.max_retries",
+        "retry_count.$": "States.MathAdd($.retry_count, 1)"
+      },
+      "Next": "ExecuteRemediation"
+    },
+
+    "Success": {
+      "Type": "Succeed",
+      "Comment": "Terminal state: remediation was executed and verified successfully. Reachable on the very first attempt (no retries needed) or after any number of retries up to max_retries -- retry_count in the final output shows exactly how many retries, if any, were actually used."
+    },
+
+    "Escalate": {
+      "Type": "Pass",
+      "Comment": "Terminal escalation / manual-intervention state. Reached from: CheckAutomaticRemediation (automatic == false, never entered the retry loop at all) and, since Step 51, from CheckRetryLimit once the retry budget (retry_count >= max_retries) is exhausted following any combination of ExecuteRemediation/VerifyRemediation failures. Adds a marker via ResultPath rather than reconstructing the whole payload with Parameters, so it never assumes which upstream fields (remediation_result, verification, retry_count, max_retries, error) are present and never discards whatever detection_result/remediation_plan/retry data already accumulated -- the final output therefore always shows exactly how many attempts were made (retry_count) against what budget (max_retries), plus the last attempt's failure evidence (remediation_result/verification/error, whichever exist). Never reports success for any of these cases.",
+      "Result": {
+        "status": "ESCALATION_REQUIRED",
+        "manual_intervention_required": true
+      },
+      "ResultPath": "$.escalation",
+      "End": true
+    }
+  }
+}

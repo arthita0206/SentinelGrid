@@ -1,0 +1,14 @@
+# SentinelGrid — dependencies
+#
+# Only dependencies genuinely needed so far. boto3 is required starting
+# Step 4, used only by AwsIotPublisher (simulator/aws_publisher.py) — it
+# is not needed to run the simulator in local publisher mode.
+#
+# The [crt] extra pulls in awscrt (AWS Common Runtime), which botocore
+# requires for the "aws login" / SSO-style credential provider used by the
+# "sentinelgrid" CLI profile. Without it, boto3.Session(...) raises
+# MissingDependencyException as soon as it needs to resolve credentials.
+
+PyYAML==6.0.2
+pytest==8.3.4
+boto3[crt]==1.42.97

@@ -1,0 +1,148 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — SQS telemetry ingestion/buffering layer (Step 25).
+  Replaces the Kinesis design from Step 24, which AWS blocked with
+  SubscriptionRequiredException on this account (see
+  telemetry-kinesis-stream.yaml, preserved unmodified for history).
+  Creates SentinelGridTelemetryQueue (SQS Standard) + SentinelGridTelemetryDLQ
+  + a new, independent AWS IoT topic rule that additionally routes the
+  existing sentinelgrid/telemetry topic into the queue, via a dedicated
+  least-privilege IAM role. Purely additive: does not touch
+  telemetry-storage.yaml, anomaly-detector.yaml, anomaly-detection-rule.yaml,
+  or any remediation stack — the existing IoT -> DynamoDB and
+  IoT -> Anomaly Detector rules keep running unchanged, alongside this
+  new one. No consumer reads from this queue yet; that is a later step.
+  See infrastructure/README.md.
+
+Parameters:
+  MessageRetentionPeriodSeconds:
+    Type: Number
+    Default: 345600
+    MinValue: 60
+    MaxValue: 1209600
+    Description: >
+      How long the main queue retains an unconsumed message, in seconds.
+      Default 345600 (4 days) — SQS's own out-of-the-box default; ample
+      buffering headroom for a student project's telemetry volume without
+      the extra cost of the 14-day maximum.
+
+  VisibilityTimeoutSeconds:
+    Type: Number
+    Default: 90
+    MinValue: 0
+    MaxValue: 43200
+    Description: >
+      How long a message stays hidden from other receivers after one
+      consumer receives it, in seconds. Raised from SQS's own default
+      (30) to 90 in Step 26: AWS Lambda's SQS event source mapping
+      REQUIRES the queue's VisibilityTimeout to be >= the consumer
+      Lambda's own Timeout (see infrastructure/sqs-consumer.yaml,
+      SentinelGridSqsTelemetryConsumer's 60-second Timeout) — 30 was
+      rejected outright at CreateEventSourceMapping with
+      "Queue visibility timeout: 30 seconds is less than Function
+      timeout: 60 seconds". 90 gives a deliberate ~30-second margin
+      above that 60-second Timeout without inflating all the way to
+      AWS's general 6x-function-timeout guidance (which would be 360s) —
+      appropriate for this project's low telemetry volume; the DLQ
+      (MaxReceiveCount, above) is the backstop for repeated failures.
+
+  MaxReceiveCount:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    MaxValue: 1000
+    Description: >
+      How many times a message may be received from the main queue
+      before SQS redrives it to the dead-letter queue. Default 5 — high
+      enough to absorb a few transient consumer failures, low enough to
+      surface a genuinely broken message quickly for a demonstration
+      project.
+
+Resources:
+  TelemetryDLQ:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: SentinelGridTelemetryDLQ
+      # Deliberately longer than the main queue's own retention (see
+      # MessageRetentionPeriodSeconds above): messages only ever land
+      # here because normal processing already failed repeatedly, so
+      # they get the maximum retention (14 days) to leave the widest
+      # possible window to investigate before they're gone for good.
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  TelemetryQueue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: SentinelGridTelemetryQueue
+      MessageRetentionPeriod: !Ref MessageRetentionPeriodSeconds
+      VisibilityTimeout: !Ref VisibilityTimeoutSeconds
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TelemetryDLQ.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+
+  IoTToSqsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridIoTToSqsRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridIoTSqsSendMessage
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !GetAtt TelemetryQueue.Arn
+
+  TelemetryToSqsRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: sentinelgrid_telemetry_to_sqs
+      TopicRulePayload:
+        AwsIotSqlVersion: "2016-03-23"
+        Sql: "SELECT * FROM 'sentinelgrid/telemetry'"
+        RuleDisabled: false
+        Actions:
+          - Sqs:
+              QueueUrl: !Ref TelemetryQueue
+              RoleArn: !GetAtt IoTToSqsRole.Arn
+              UseBase64: false
+
+Outputs:
+  QueueUrl:
+    Description: URL of the SentinelGrid telemetry SQS queue.
+    Value: !Ref TelemetryQueue
+
+  QueueArn:
+    Description: ARN of the SentinelGrid telemetry SQS queue.
+    Value: !GetAtt TelemetryQueue.Arn
+
+  DeadLetterQueueUrl:
+    Description: URL of the SentinelGrid telemetry dead-letter queue.
+    Value: !Ref TelemetryDLQ
+
+  DeadLetterQueueArn:
+    Description: ARN of the SentinelGrid telemetry dead-letter queue.
+    Value: !GetAtt TelemetryDLQ.Arn
+
+  RuleArn:
+    Description: ARN of the IoT Core topic rule that routes telemetry into SQS.
+    Value: !GetAtt TelemetryToSqsRule.Arn
+
+  IoTToSqsRoleArn:
+    Description: ARN of the dedicated IAM role the IoT rule assumes to write to SQS.
+    Value: !GetAtt IoTToSqsRole.Arn

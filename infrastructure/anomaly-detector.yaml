@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — anomaly detector Lambda function. Creates
+  SentinelGridAnomalyDetector and its execution role, which has
+  CloudWatch Logs access, dynamodb:PutItem on SentinelGridAnomalyEvents
+  (via ImportValue), exactly lambda:InvokeFunction scoped to the existing
+  SentinelGridRemediationTrigger Lambda's exact ARN (Step 22), (Step 28)
+  cloudwatch:PutMetricData scoped by the cloudwatch:namespace=SentinelGrid
+  condition, and (Step 34) dynamodb:UpdateItem on SentinelGridNodeState
+  (via ImportValue) — no wildcard, no other DynamoDB/Lambda action. Does
+  not create the invoking IoT Rule (see anomaly-detection-rule.yaml) or
+  any remediation resource. Lambda code is pinned to an immutable S3
+  object version (DeploymentPackageVersion). See infrastructure/README.md.
+
+Parameters:
+  DeploymentBucketName:
+    Type: String
+    Description: >
+      Name of an EXISTING, VERSIONING-ENABLED S3 bucket containing the
+      packaged anomaly detector zip (see
+      infrastructure/package-anomaly-detector.sh). This template does not
+      create this bucket — it must already exist, with versioning
+      enabled, and the package must already be uploaded to it, before
+      deploying this stack.
+
+  DeploymentPackageKey:
+    Type: String
+    Default: sentinelgrid/anomaly-detector.zip
+    Description: S3 key of the packaged anomaly detector zip within DeploymentBucketName.
+
+  DeploymentPackageVersion:
+    Type: String
+    Description: >
+      S3 object VersionId of the packaged anomaly detector zip at
+      DeploymentBucketName/DeploymentPackageKey — obtained via
+      `aws s3api head-object` immediately after uploading (see
+      infrastructure/deploy-anomaly-detector.sh). Required, with no
+      default: this pins the Lambda to one specific, immutable object
+      version, so CloudFormation reliably detects a code change even when
+      the bucket/key stay the same. A VersionId only exists if
+      DeploymentBucketName has S3 versioning enabled.
+
+  RemediationTriggerFunctionArn:
+    Type: String
+    Description: >
+      ARN of the already-deployed SentinelGridRemediationTrigger Lambda
+      (see infrastructure/remediation-trigger.yaml, Step 21). Required,
+      no default — that stack has no cross-stack Export for its Lambda
+      ARN, so infrastructure/deploy-anomaly-detector.sh obtains it live
+      from that stack's own FunctionArn Output. This template does not
+      create, modify, or assume anything about that stack.
+
+Resources:
+
+  AnomalyDetectorExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridAnomalyDetectorExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridAnomalyDetectorLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/SentinelGridAnomalyDetector:*"
+        - PolicyName: SentinelGridAnomalyDetectorAnomalyEventsWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource:
+                  - !ImportValue SentinelGridAnomalyEventsTableArn
+        - PolicyName: SentinelGridAnomalyDetectorInvokeRemediationTrigger
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Ref RemediationTriggerFunctionArn
+        - PolicyName: SentinelGridAnomalyDetectorPublishMetrics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                # CloudWatch PutMetricData does not support resource-level
+                # ARN scoping (it is not an ARN-addressable action) -- the
+                # AWS-documented way to constrain it is the
+                # cloudwatch:namespace condition key below, not Resource.
+                # Resource: "*" is required by the action itself, not used
+                # here as the primary authorization boundary.
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: SentinelGrid
+        - PolicyName: SentinelGridAnomalyDetectorNodeStateWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !ImportValue SentinelGridNodeStateTableArn
+
+  AnomalyDetectorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SentinelGridAnomalyDetector
+      Description: >
+        SentinelGrid anomaly detector Lambda. Receives city telemetry,
+        detects sensor dropout, network partition, data corruption,
+        overload, and invalid input conditions, and returns a structured
+        DetectionResult.
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      Handler: lambda_functions.anomaly_detector.handler.lambda_handler
+      Role: !GetAtt AnomalyDetectorExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref DeploymentBucketName
+        S3Key: !Ref DeploymentPackageKey
+        S3ObjectVersion: !Ref DeploymentPackageVersion
+      Environment:
+        Variables:
+          REMEDIATION_TRIGGER_FUNCTION_ARN: !Ref RemediationTriggerFunctionArn
+          NODE_STATE_TABLE_NAME: !ImportValue SentinelGridNodeStateTableName
+      Timeout: 10
+      MemorySize: 128
+
+Outputs:
+  FunctionName:
+    Description: Name of the anomaly detector Lambda function.
+    Value: !Ref AnomalyDetectorFunction
+
+  FunctionArn:
+    Description: ARN of the anomaly detector Lambda function.
+    Value: !GetAtt AnomalyDetectorFunction.Arn
+
+  ExecutionRoleArn:
+    Description: ARN of the Lambda's execution role.
+    Value: !GetAtt AnomalyDetectorExecutionRole.Arn

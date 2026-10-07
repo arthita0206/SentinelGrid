@@ -1,0 +1,11 @@
+{
+  "node_id": "power-001",
+  "subsystem": "power",
+  "timestamp": "2026-01-01T00:00:00+00:00",
+  "status": "ONLINE",
+  "data": {
+    "load": 55.2,
+    "voltage": 230.1,
+    "frequency": 50.01
+  }
+}

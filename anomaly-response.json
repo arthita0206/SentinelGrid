@@ -1,0 +1,1 @@
+{"detected": true, "fault_type": "NODE_OVERLOAD", "severity": "MEDIUM", "node_id": "power-007", "subsystem": "power", "timestamp": "2026-01-01T00:05:00+00:00", "reason": "Field 'load' value 97.8 is within the overload band (95.0, 100.0).", "evidence": {"field": "load", "value": 97.8, "overload_range": [95.0, 100.0]}}

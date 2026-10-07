@@ -1,0 +1,322 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — remediation Lambda functions (Step 17). Creates three
+  Lambda functions (SentinelGridRemediationPlanner/Executor/Verifier),
+  each with its own dedicated execution role, wrapping the existing
+  local remediation engine. Each role grants CloudWatch Logs and (Step
+  28) cloudwatch:PutMetricData scoped by cloudwatch:namespace=
+  SentinelGrid. Planner/Executor (Step 33) also get dynamodb:PutItem/
+  GetItem on SentinelGridRecoveryEvents. All three (Step 34) get
+  dynamodb:UpdateItem on SentinelGridNodeState — all via ImportValue,
+  plus matching env vars. No IoT/Step Functions permission; no role
+  reused between functions. Lambda code pinned to immutable S3 object
+  versions. See infrastructure/README.md.
+
+Parameters:
+  DeploymentBucketName:
+    Type: String
+    Description: >
+      Name of an EXISTING, VERSIONING-ENABLED S3 bucket containing the
+      packaged remediation Lambda zips (see
+      infrastructure/package-remediation-lambdas.sh). This template does
+      not create this bucket — it must already exist, with versioning
+      enabled, and all three packages must already be uploaded to it,
+      before deploying this stack.
+
+  PlannerPackageKey:
+    Type: String
+    Default: sentinelgrid/remediation-planner.zip
+    Description: S3 key of the packaged planner zip within DeploymentBucketName.
+
+  PlannerPackageVersion:
+    Type: String
+    Description: >
+      S3 object VersionId of the planner zip at
+      DeploymentBucketName/PlannerPackageKey. Required, no default — see
+      infrastructure/deploy-remediation-lambdas.sh.
+
+  ExecutorPackageKey:
+    Type: String
+    Default: sentinelgrid/remediation-executor.zip
+    Description: S3 key of the packaged executor zip within DeploymentBucketName.
+
+  ExecutorPackageVersion:
+    Type: String
+    Description: >
+      S3 object VersionId of the executor zip at
+      DeploymentBucketName/ExecutorPackageKey. Required, no default — see
+      infrastructure/deploy-remediation-lambdas.sh.
+
+  VerifierPackageKey:
+    Type: String
+    Default: sentinelgrid/remediation-verifier.zip
+    Description: S3 key of the packaged verifier zip within DeploymentBucketName.
+
+  VerifierPackageVersion:
+    Type: String
+    Description: >
+      S3 object VersionId of the verifier zip at
+      DeploymentBucketName/VerifierPackageKey. Required, no default — see
+      infrastructure/deploy-remediation-lambdas.sh.
+
+Resources:
+  PlannerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridRemediationPlannerRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridRemediationPlannerLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/SentinelGridRemediationPlanner:*"
+        - PolicyName: SentinelGridRemediationPlannerPublishMetrics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                # See anomaly-detector.yaml's own PublishMetrics policy
+                # comment: PutMetricData has no ARN-level resource scoping,
+                # so the cloudwatch:namespace condition is the primary
+                # authorization boundary here, not Resource: "*".
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: SentinelGrid
+        - PolicyName: SentinelGridRemediationPlannerRecoveryEventsAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # dynamodb:GetItem is required by
+                  # recovery_event_store.py's duplicate-vs-conflict
+                  # resolution (a read-back on ConditionalCheckFailedException
+                  # — see that module's own docstring "Idempotency") — not
+                  # granted speculatively; Query/Scan/UpdateItem/DeleteItem
+                  # are deliberately NOT granted since nothing here needs them.
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource:
+                  - !ImportValue SentinelGridRecoveryEventsTableArn
+        - PolicyName: SentinelGridRemediationPlannerNodeStateWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !ImportValue SentinelGridNodeStateTableArn
+
+  PlannerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SentinelGridRemediationPlanner
+      Description: >-
+        SentinelGrid remediation planner Lambda. Thin adapter over
+        RemediationEngine.plan(). Input: a DetectionResult-shaped dict.
+        Output: the serialized RemediationPlan only.
+      Runtime: python3.12
+      Architectures: [arm64]
+      Handler: lambda_functions.remediation.planner.lambda_handler
+      Role: !GetAtt PlannerExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          RECOVERY_EVENTS_TABLE_NAME: !ImportValue SentinelGridRecoveryEventsTableName
+          NODE_STATE_TABLE_NAME: !ImportValue SentinelGridNodeStateTableName
+      Code:
+        S3Bucket: !Ref DeploymentBucketName
+        S3Key: !Ref PlannerPackageKey
+        S3ObjectVersion: !Ref PlannerPackageVersion
+
+  ExecutorExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridRemediationExecutorRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridRemediationExecutorLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/SentinelGridRemediationExecutor:*"
+        - PolicyName: SentinelGridRemediationExecutorPublishMetrics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: SentinelGrid
+        - PolicyName: SentinelGridRemediationExecutorRecoveryEventsAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # See PlannerRecoveryEventsAccess's own comment above —
+                  # identical reasoning applies here.
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource:
+                  - !ImportValue SentinelGridRecoveryEventsTableArn
+        - PolicyName: SentinelGridRemediationExecutorNodeStateWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !ImportValue SentinelGridNodeStateTableArn
+
+  ExecutorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SentinelGridRemediationExecutor
+      Description: >-
+        SentinelGrid remediation executor Lambda. Thin adapter over
+        RemediationExecutor.execute() — a safe, AWS-independent
+        simulation. Input: {detection_result, remediation_plan}. Output:
+        the serialized RemediationResult only.
+      Runtime: python3.12
+      Architectures: [arm64]
+      Handler: lambda_functions.remediation.executor.lambda_handler
+      Role: !GetAtt ExecutorExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          RECOVERY_EVENTS_TABLE_NAME: !ImportValue SentinelGridRecoveryEventsTableName
+          NODE_STATE_TABLE_NAME: !ImportValue SentinelGridNodeStateTableName
+      Code:
+        S3Bucket: !Ref DeploymentBucketName
+        S3Key: !Ref ExecutorPackageKey
+        S3ObjectVersion: !Ref ExecutorPackageVersion
+
+  VerifierExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridRemediationVerifierRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridRemediationVerifierLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/SentinelGridRemediationVerifier:*"
+        - PolicyName: SentinelGridRemediationVerifierPublishMetrics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: SentinelGrid
+        - PolicyName: SentinelGridRemediationVerifierNodeStateWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # Step 34: Verifier writes ESCALATION_REQUIRED node
+                  # state only when it observes verified=False -- a
+                  # defensive backstop against executor.py's own
+                  # optimistic RECOVERED write (see executor.py's "Note
+                  # on RECOVERED and verification"). Verifier holds no
+                  # RecoveryEventsAccess policy -- it does not persist
+                  # recovery-event history, only this one narrower state
+                  # correction.
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !ImportValue SentinelGridNodeStateTableArn
+
+  VerifierFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SentinelGridRemediationVerifier
+      Description: >-
+        SentinelGrid remediation verifier Lambda. Inspects (never
+        re-executes) a RemediationResult. Input: {detection_result,
+        remediation_plan, remediation_result}. Output: {verified, reason}
+        only. No real sensor/network verification is performed.
+      Runtime: python3.12
+      Architectures: [arm64]
+      Handler: lambda_functions.remediation.verifier.lambda_handler
+      Role: !GetAtt VerifierExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NODE_STATE_TABLE_NAME: !ImportValue SentinelGridNodeStateTableName
+      Code:
+        S3Bucket: !Ref DeploymentBucketName
+        S3Key: !Ref VerifierPackageKey
+        S3ObjectVersion: !Ref VerifierPackageVersion
+
+Outputs:
+  PlannerFunctionArn:
+    Description: ARN of the SentinelGrid remediation planner Lambda function.
+    Value: !GetAtt PlannerFunction.Arn
+    Export:
+      Name: SentinelGridRemediationPlannerArn
+
+  ExecutorFunctionArn:
+    Description: ARN of the SentinelGrid remediation executor Lambda function.
+    Value: !GetAtt ExecutorFunction.Arn
+    Export:
+      Name: SentinelGridRemediationExecutorArn
+
+  VerifierFunctionArn:
+    Description: ARN of the SentinelGrid remediation verifier Lambda function.
+    Value: !GetAtt VerifierFunction.Arn
+    Export:
+      Name: SentinelGridRemediationVerifierArn

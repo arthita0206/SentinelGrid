@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — AWS IoT Topic Rule that invokes the already-deployed
+  SentinelGridAnomalyDetector Lambda function for every telemetry message
+  on sentinelgrid/telemetry. This runs independently alongside the
+  existing sentinelgrid_telemetry_to_dynamodb rule (see
+  infrastructure/telemetry-storage.yaml), which this template does not
+  touch in any way. No additional IAM role is created for IoT itself: an
+  IoT Rule's Lambda action authorizes via a Lambda resource-based
+  permission (below), not an assumed role, so only that permission is
+  added — nothing broader. Does not create result persistence, alarms,
+  or remediation. (Step 26) RuleDisabled is now true: this direct path
+  is superseded by SQS -> SentinelGridSqsTelemetryConsumer -> Analyzer
+  (see infrastructure/sqs-consumer.yaml and telemetry-sqs-queue.yaml),
+  to avoid duplicate analyzer processing of the same telemetry message.
+  The rule and its Lambda action are deliberately preserved, not
+  deleted, for historical traceability. See infrastructure/README.md.
+
+Parameters:
+  AnomalyDetectorFunctionName:
+    Type: String
+    Default: SentinelGridAnomalyDetector
+    Description: >
+      Name of the already-deployed anomaly detector Lambda function (see
+      infrastructure/anomaly-detector.yaml). This template does not
+      create or modify that function, or its execution role — it must
+      already exist before this stack is deployed.
+
+Resources:
+
+  AnomalyDetectorInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AnomalyDetectorFunctionName
+      Action: lambda:InvokeFunction
+      Principal: iot.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:rule/sentinelgrid_telemetry_to_lambda"
+
+  AnomalyDetectionTopicRule:
+    Type: AWS::IoT::TopicRule
+    DependsOn: AnomalyDetectorInvokePermission
+    Properties:
+      RuleName: sentinelgrid_telemetry_to_lambda
+      TopicRulePayload:
+        AwsIotSqlVersion: "2016-03-23"
+        Sql: "SELECT * FROM 'sentinelgrid/telemetry'"
+        RuleDisabled: true
+        Actions:
+          - Lambda:
+              FunctionArn: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AnomalyDetectorFunctionName}"
+
+Outputs:
+  TopicRuleArn:
+    Description: ARN of the IoT Core topic rule invoking the anomaly detector Lambda.
+    Value: !GetAtt AnomalyDetectionTopicRule.Arn
+
+  InvokedFunctionName:
+    Description: Name of the Lambda function this rule invokes.
+    Value: !Ref AnomalyDetectorFunctionName

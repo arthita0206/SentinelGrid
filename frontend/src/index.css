@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/*
+ * SentinelGrid design tokens (Step 39).
+ *
+ * A dark, restrained "operations center" palette — deliberately NOT a
+ * generic bright admin-template look. Semantic status colors (healthy /
+ * warning / critical / info / neutral) are used consistently everywhere
+ * a node/event/fault state is shown, so an operator can scan the screen
+ * by color without reading every label.
+ */
+@theme {
+  --color-surface-950: #05070d;
+  --color-surface-900: #0a0e18;
+  --color-surface-850: #0e1420;
+  --color-surface-800: #131a29;
+  --color-surface-700: #1b2436;
+  --color-surface-600: #263148;
+  --color-surface-border: #1e293b;
+
+  --color-brand-400: #22d3ee;
+  --color-brand-500: #0ea5c7;
+  --color-brand-600: #0891b2;
+
+  --color-status-healthy: #34d399;
+  --color-status-healthy-muted: #0f3d31;
+  --color-status-warning: #f7b955;
+  --color-status-warning-muted: #4a3610;
+  --color-status-critical: #f76e6e;
+  --color-status-critical-muted: #4a1717;
+  --color-status-info: #60a5fa;
+  --color-status-info-muted: #17294a;
+  --color-status-neutral: #94a3b8;
+  --color-status-neutral-muted: #263148;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-surface-950 text-slate-200 antialiased;
+    font-family: var(--font-sans);
+  }
+
+  ::selection {
+    @apply bg-brand-500/30 text-slate-50;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-400;
+  }
+
+  /* Slim, low-contrast scrollbars in keeping with the ops-console look */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-surface-600) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface-600);
+    border-radius: 9999px;
+  }
+}

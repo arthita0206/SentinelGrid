@@ -1,0 +1,34 @@
+{
+  "test_id": "step46-caseB-control-plane-escalation",
+  "test_type": "CONTROL_PLANE_ESCALATION_VALIDATION",
+  "not_an_iot_test": true,
+  "target_node_id": "power-step46-caseB-overload-high-001",
+  "subsystem": "power",
+  "invoked_function": "SentinelGridRemediationTrigger",
+  "invoke_start": "2026-09-16T11:10:21.200410+00:00",
+  "invoke_end": "2026-09-16T11:10:21.871040+00:00",
+  "detection_result_sent": {
+    "detected": true,
+    "fault_type": "NODE_OVERLOAD",
+    "severity": "HIGH",
+    "node_id": "power-step46-caseB-overload-high-001",
+    "subsystem": "power",
+    "timestamp": "2026-09-16T11:10:21.095321+00:00",
+    "reason": "Step 46 Test Case B -- SYNTHETIC control-plane escalation validation. This DetectionResult was hand-crafted, not produced by a real telemetry reading through the deployed detector (whose real NODE_OVERLOAD rule can only ever produce MEDIUM severity). It is used to validate the Planner -> CheckAutomaticRemediation -> Escalate path end-to-end via the real, unmodified SentinelGridRemediationTrigger -> Step Functions -> Planner pipeline.",
+    "evidence": {
+      "field": "load",
+      "value": 250.0,
+      "note": "synthetic evidence for Step 46 control-plane test"
+    }
+  },
+  "lambda_status_code": 200,
+  "lambda_function_error": null,
+  "lambda_response_payload": {
+    "triggered": true,
+    "started_execution": true,
+    "already_existed": false,
+    "execution_name": "sentinelgrid-remediation-290a4c743f8e72d3ab64406b16b126cc",
+    "execution_arn": "arn:aws:states:ap-south-1:401429382000:execution:SentinelGridRemediationWorkflow:sentinelgrid-remediation-290a4c743f8e72d3ab64406b16b126cc",
+    "reason": "NODE_OVERLOAD detected on node_id='power-step46-caseB-overload-high-001'; triggering remediation workflow."
+  }
+}

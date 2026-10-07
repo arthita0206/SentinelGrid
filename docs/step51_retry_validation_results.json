@@ -1,0 +1,98 @@
+{
+  "identity": {
+    "Arn": "arn:aws:iam::401429382000:root",
+    "Account": "401429382000"
+  },
+  "state_machine_arn": "arn:aws:states:ap-south-1:401429382000:stateMachine:SentinelGridRemediationWorkflow",
+  "test_a": {
+    "test": "A",
+    "description": "NODE_OVERLOAD MEDIUM, max_retries=2, expect success on first attempt, no retry.",
+    "node_id": "power-step51-testA-ac0e3ba81d13",
+    "execution_arn": "arn:aws:states:ap-south-1:401429382000:execution:SentinelGridRemediationWorkflow:sentinelgrid-step51-testA-ac0e3ba81d13",
+    "execution_name": "sentinelgrid-step51-testA-ac0e3ba81d13",
+    "final_status": "SUCCEEDED",
+    "visited_states": [
+      "CheckAnomaly",
+      "PrepareRemediationPlanning",
+      "ValidateMaxRetries",
+      "UseProvidedMaxRetries",
+      "PlanRemediation",
+      "CheckAutomaticRemediation",
+      "ExecuteRemediation",
+      "CheckExecutionSuccess",
+      "VerifyRemediation",
+      "CheckVerification"
+    ],
+    "output": {
+      "max_retries": 2,
+      "retry_count": 0,
+      "detection_result": {
+        "detected": true,
+        "fault_type": "NODE_OVERLOAD",
+        "severity": "MEDIUM",
+        "node_id": "power-step51-testA-ac0e3ba81d13",
+        "subsystem": "power",
+        "timestamp": "2026-09-17T18:58:49+00:00",
+        "reason": "Step 51 Test A -- SYNTHETIC control-plane retry-mechanism validation (same direct-Step-Functions pattern as Step 32 / Step 46 Test Case B). Not a real telemetry-triggered detection.",
+        "evidence": {
+          "field": "load",
+          "value": 97.5
+        },
+        "max_retries": 2
+      },
+      "remediation_plan": {
+        "remediation_required": true,
+        "node_id": "power-step51-testA-ac0e3ba81d13",
+        "subsystem": "power",
+        "fault_type": "NODE_OVERLOAD",
+        "severity": "MEDIUM",
+        "timestamp": "2026-09-17T18:58:49+00:00",
+        "action": {
+          "action_type": "REDUCE_LOAD",
+          "description": "Simulate reducing load on the affected node.",
+          "parameters": {
+            "field": "load",
+            "value": 97.5
+          }
+        },
+        "reason": "NODE_OVERLOAD at severity MEDIUM: Step 51 Test A -- SYNTHETIC control-plane retry-mechanism validation (same direct-Step-Functions pattern as Step 32 / Step 46 Test Case B). Not a real telemetry-triggered detection.",
+        "automatic": true,
+        "escalation_required": false
+      },
+      "remediation_result": {
+        "success": true,
+        "status": "SUCCESS",
+        "node_id": "power-step51-testA-ac0e3ba81d13",
+        "subsystem": "power",
+        "fault_type": "NODE_OVERLOAD",
+        "action": "REDUCE_LOAD",
+        "timestamp": "2026-09-17T18:58:49+00:00",
+        "message": "Simulated execution of REDUCE_LOAD succeeded.",
+        "simulated": true,
+        "details": {
+          "parameters": {
+            "field": "load",
+            "value": 97.5
+          }
+        }
+      },
+      "verification": {
+        "verified": true,
+        "reason": "Simulated remediation completed successfully and corresponds to the remediation plan."
+      }
+    },
+    "retry_count_in_output": 0,
+    "max_retries_in_output": 2,
+    "verification_verified": true,
+    "expected_no_retry": true,
+    "expected_single_execute_attempt": true
+  },
+  "test_b_retry_behavior": {
+    "performed_live": false,
+    "reason": "RemediationExecutor.execute() is a deterministic pure-function simulation that ALWAYS returns success=True for any real automatic RemediationPlan (confirmed by direct code inspection of remediation/engine.py's RemediationExecutor.execute() during this step) -- there is no natural way to make a real automatic plan's execution fail without either modifying application code or engineering an artificial 'always fail' hook, both explicitly forbidden for this step. Retry behavior (max_retries=0/1/2, success-after-retry, failure-after-exhaustion, all bounds/defaulting cases) was instead validated exhaustively via 24 dedicated local ASL-interpreter tests in tests/test_step_functions_workflow.py -- see docs/step51_remediation_retry.md."
+  },
+  "test_c_escalation_after_retries": {
+    "performed_live": false,
+    "reason": "Same reason as Test B -- depends on being able to force a live failure, which is not safely possible without changing production behavior."
+  }
+}

@@ -1,0 +1,1245 @@
+{
+  "identity": {
+    "UserId": "401429382000",
+    "Account": "401429382000",
+    "Arn": "arn:aws:iam::401429382000:root"
+  },
+  "iam_roles": {
+    "SentinelGridAnomalyDetectorExecutionRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridAnomalyDetectorAnomalyEventsWrite": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:PutItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridAnomalyEvents"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridAnomalyDetectorInvokeRemediationTrigger": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "lambda:InvokeFunction"
+              ],
+              "Resource": [
+                "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridRemediationTrigger"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridAnomalyDetectorLogging": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": [
+                "arn:aws:logs:ap-south-1:401429382000:log-group:/aws/lambda/SentinelGridAnomalyDetector:*"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridAnomalyDetectorNodeStateWrite": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridNodeState"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridAnomalyDetectorPublishMetrics": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Condition": {
+                "StringEquals": {
+                  "cloudwatch:namespace": "SentinelGrid"
+                }
+              },
+              "Action": [
+                "cloudwatch:PutMetricData"
+              ],
+              "Resource": "*",
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridIoTToDynamoDBRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "iot.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridIoTDynamoDBWrite": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:PutItem"
+              ],
+              "Resource": "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridTelemetry",
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridIoTToSqsRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "iot.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridIoTSqsSendMessage": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "sqs:SendMessage"
+              ],
+              "Resource": [
+                "arn:aws:sqs:ap-south-1:401429382000:SentinelGridTelemetryQueue"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridKnowledgeQueryExecutionRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridKnowledgeQueryAnomalyEventsRead": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:Query",
+                "dynamodb:Scan"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridAnomalyEvents"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridKnowledgeQueryLogging": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": [
+                "arn:aws:logs:ap-south-1:401429382000:log-group:/aws/lambda/SentinelGridKnowledgeQuery:*"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridKnowledgeQueryMetricsRead": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "cloudwatch:GetMetricData"
+              ],
+              "Resource": "*",
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridKnowledgeQueryNodeStateRead": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:Scan"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridNodeState"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridKnowledgeQueryRecoveryEventsRead": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:Query",
+                "dynamodb:Scan"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridRecoveryEvents"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridRemediationExecutorRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridRemediationExecutorLogging": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": [
+                "arn:aws:logs:ap-south-1:401429382000:log-group:/aws/lambda/SentinelGridRemediationExecutor:*"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationExecutorNodeStateWrite": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridNodeState"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationExecutorPublishMetrics": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Condition": {
+                "StringEquals": {
+                  "cloudwatch:namespace": "SentinelGrid"
+                }
+              },
+              "Action": [
+                "cloudwatch:PutMetricData"
+              ],
+              "Resource": "*",
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationExecutorRecoveryEventsAccess": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:PutItem",
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridRecoveryEvents"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridRemediationPlannerRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridRemediationPlannerLogging": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": [
+                "arn:aws:logs:ap-south-1:401429382000:log-group:/aws/lambda/SentinelGridRemediationPlanner:*"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationPlannerNodeStateWrite": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridNodeState"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationPlannerPublishMetrics": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Condition": {
+                "StringEquals": {
+                  "cloudwatch:namespace": "SentinelGrid"
+                }
+              },
+              "Action": [
+                "cloudwatch:PutMetricData"
+              ],
+              "Resource": "*",
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationPlannerRecoveryEventsAccess": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:PutItem",
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridRecoveryEvents"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridRemediationTriggerExecutionRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridRemediationTriggerLogging": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": [
+                "arn:aws:logs:ap-south-1:401429382000:log-group:/aws/lambda/SentinelGridRemediationTrigger:*"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationTriggerStartExecution": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": "states:StartExecution",
+              "Resource": [
+                "arn:aws:states:ap-south-1:401429382000:stateMachine:SentinelGridRemediationWorkflow"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridRemediationVerifierRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridRemediationVerifierLogging": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": [
+                "arn:aws:logs:ap-south-1:401429382000:log-group:/aws/lambda/SentinelGridRemediationVerifier:*"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationVerifierNodeStateWrite": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:ap-south-1:401429382000:table/SentinelGridNodeState"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridRemediationVerifierPublishMetrics": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Condition": {
+                "StringEquals": {
+                  "cloudwatch:namespace": "SentinelGrid"
+                }
+              },
+              "Action": [
+                "cloudwatch:PutMetricData"
+              ],
+              "Resource": "*",
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridRemediationWorkflowRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "states.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridRemediationWorkflowInvokeLambdas": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": "lambda:InvokeFunction",
+              "Resource": [
+                "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridRemediationPlanner",
+                "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridRemediationExecutor",
+                "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridRemediationVerifier"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    },
+    "SentinelGridSqsConsumerExecutionRole": {
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "attached_managed_policies": [],
+      "inline_policies": {
+        "SentinelGridSqsConsumerInvokeAnalyzer": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "lambda:InvokeFunction"
+              ],
+              "Resource": [
+                "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridAnomalyDetector"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridSqsConsumerLogging": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": [
+                "arn:aws:logs:ap-south-1:401429382000:log-group:/aws/lambda/SentinelGridSqsTelemetryConsumer:*"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "SentinelGridSqsConsumerPollQueue": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes"
+              ],
+              "Resource": [
+                "arn:aws:sqs:ap-south-1:401429382000:SentinelGridTelemetryQueue"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "wildcard_audit": {
+    "wildcard_statements": [
+      {
+        "role": "SentinelGridAnomalyDetectorExecutionRole",
+        "policy": "SentinelGridAnomalyDetectorPublishMetrics",
+        "issue": "Resource '*'",
+        "actions": [
+          "cloudwatch:PutMetricData"
+        ],
+        "has_condition": true,
+        "condition": {
+          "StringEquals": {
+            "cloudwatch:namespace": "SentinelGrid"
+          }
+        }
+      },
+      {
+        "role": "SentinelGridKnowledgeQueryExecutionRole",
+        "policy": "SentinelGridKnowledgeQueryMetricsRead",
+        "issue": "Resource '*'",
+        "actions": [
+          "cloudwatch:GetMetricData"
+        ],
+        "has_condition": false,
+        "condition": null
+      },
+      {
+        "role": "SentinelGridRemediationExecutorRole",
+        "policy": "SentinelGridRemediationExecutorPublishMetrics",
+        "issue": "Resource '*'",
+        "actions": [
+          "cloudwatch:PutMetricData"
+        ],
+        "has_condition": true,
+        "condition": {
+          "StringEquals": {
+            "cloudwatch:namespace": "SentinelGrid"
+          }
+        }
+      },
+      {
+        "role": "SentinelGridRemediationPlannerRole",
+        "policy": "SentinelGridRemediationPlannerPublishMetrics",
+        "issue": "Resource '*'",
+        "actions": [
+          "cloudwatch:PutMetricData"
+        ],
+        "has_condition": true,
+        "condition": {
+          "StringEquals": {
+            "cloudwatch:namespace": "SentinelGrid"
+          }
+        }
+      },
+      {
+        "role": "SentinelGridRemediationVerifierRole",
+        "policy": "SentinelGridRemediationVerifierPublishMetrics",
+        "issue": "Resource '*'",
+        "actions": [
+          "cloudwatch:PutMetricData"
+        ],
+        "has_condition": true,
+        "condition": {
+          "StringEquals": {
+            "cloudwatch:namespace": "SentinelGrid"
+          }
+        }
+      }
+    ]
+  },
+  "lambda": {
+    "SentinelGridAnomalyDetector": {
+      "Runtime": "python3.12",
+      "Architectures": [
+        "arm64"
+      ],
+      "Timeout": 10,
+      "MemorySize": 128,
+      "EnvVarKeys": [
+        "NODE_STATE_TABLE_NAME",
+        "REMEDIATION_TRIGGER_FUNCTION_ARN"
+      ],
+      "Role": "arn:aws:iam::401429382000:role/SentinelGridAnomalyDetectorExecutionRole",
+      "VpcConfig": {
+        "SubnetIds": [],
+        "SecurityGroupIds": [],
+        "VpcId": "",
+        "Ipv6AllowedForDualStack": false
+      },
+      "Layers": null,
+      "TracingConfig": {
+        "Mode": "PassThrough"
+      },
+      "FunctionUrlConfig": null,
+      "ResourceBasedPolicy": {
+        "Version": "2012-10-17",
+        "Id": "default",
+        "Statement": [
+          {
+            "Sid": "sentinelgrid-anomaly-detection-rule-AnomalyDetectorInvokePermission-roz9ShNPpIua",
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "iot.amazonaws.com"
+            },
+            "Action": "lambda:InvokeFunction",
+            "Resource": "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridAnomalyDetector",
+            "Condition": {
+              "ArnLike": {
+                "AWS:SourceArn": "arn:aws:iot:ap-south-1:401429382000:rule/sentinelgrid_telemetry_to_lambda"
+              }
+            }
+          }
+        ]
+      },
+      "LastModified": "2026-09-14T18:19:20.000+0000"
+    },
+    "SentinelGridSqsTelemetryConsumer": {
+      "Runtime": "python3.12",
+      "Architectures": [
+        "arm64"
+      ],
+      "Timeout": 60,
+      "MemorySize": 128,
+      "EnvVarKeys": [
+        "ANOMALY_DETECTOR_FUNCTION_ARN"
+      ],
+      "Role": "arn:aws:iam::401429382000:role/SentinelGridSqsConsumerExecutionRole",
+      "VpcConfig": null,
+      "Layers": null,
+      "TracingConfig": {
+        "Mode": "PassThrough"
+      },
+      "FunctionUrlConfig": null,
+      "ResourceBasedPolicy": null,
+      "LastModified": "2026-09-14T13:03:45.627+0000"
+    },
+    "SentinelGridRemediationTrigger": {
+      "Runtime": "python3.12",
+      "Architectures": [
+        "arm64"
+      ],
+      "Timeout": 10,
+      "MemorySize": 128,
+      "EnvVarKeys": [
+        "REMEDIATION_STATE_MACHINE_ARN"
+      ],
+      "Role": "arn:aws:iam::401429382000:role/SentinelGridRemediationTriggerExecutionRole",
+      "VpcConfig": null,
+      "Layers": null,
+      "TracingConfig": {
+        "Mode": "PassThrough"
+      },
+      "FunctionUrlConfig": null,
+      "ResourceBasedPolicy": null,
+      "LastModified": "2026-09-14T07:18:47.630+0000"
+    },
+    "SentinelGridRemediationPlanner": {
+      "Runtime": "python3.12",
+      "Architectures": [
+        "arm64"
+      ],
+      "Timeout": 10,
+      "MemorySize": 128,
+      "EnvVarKeys": [
+        "NODE_STATE_TABLE_NAME",
+        "RECOVERY_EVENTS_TABLE_NAME"
+      ],
+      "Role": "arn:aws:iam::401429382000:role/SentinelGridRemediationPlannerRole",
+      "VpcConfig": {
+        "SubnetIds": [],
+        "SecurityGroupIds": [],
+        "VpcId": "",
+        "Ipv6AllowedForDualStack": false
+      },
+      "Layers": null,
+      "TracingConfig": {
+        "Mode": "PassThrough"
+      },
+      "FunctionUrlConfig": null,
+      "ResourceBasedPolicy": null,
+      "LastModified": "2026-09-14T18:21:07.000+0000"
+    },
+    "SentinelGridRemediationExecutor": {
+      "Runtime": "python3.12",
+      "Architectures": [
+        "arm64"
+      ],
+      "Timeout": 10,
+      "MemorySize": 128,
+      "EnvVarKeys": [
+        "NODE_STATE_TABLE_NAME",
+        "RECOVERY_EVENTS_TABLE_NAME"
+      ],
+      "Role": "arn:aws:iam::401429382000:role/SentinelGridRemediationExecutorRole",
+      "VpcConfig": {
+        "SubnetIds": [],
+        "SecurityGroupIds": [],
+        "VpcId": "",
+        "Ipv6AllowedForDualStack": false
+      },
+      "Layers": null,
+      "TracingConfig": {
+        "Mode": "PassThrough"
+      },
+      "FunctionUrlConfig": null,
+      "ResourceBasedPolicy": null,
+      "LastModified": "2026-09-14T18:21:08.000+0000"
+    },
+    "SentinelGridRemediationVerifier": {
+      "Runtime": "python3.12",
+      "Architectures": [
+        "arm64"
+      ],
+      "Timeout": 10,
+      "MemorySize": 128,
+      "EnvVarKeys": [
+        "NODE_STATE_TABLE_NAME"
+      ],
+      "Role": "arn:aws:iam::401429382000:role/SentinelGridRemediationVerifierRole",
+      "VpcConfig": {
+        "SubnetIds": [],
+        "SecurityGroupIds": [],
+        "VpcId": "",
+        "Ipv6AllowedForDualStack": false
+      },
+      "Layers": null,
+      "TracingConfig": {
+        "Mode": "PassThrough"
+      },
+      "FunctionUrlConfig": null,
+      "ResourceBasedPolicy": null,
+      "LastModified": "2026-09-14T18:21:07.000+0000"
+    },
+    "SentinelGridKnowledgeQuery": {
+      "Runtime": "python3.12",
+      "Architectures": [
+        "arm64"
+      ],
+      "Timeout": 10,
+      "MemorySize": 128,
+      "EnvVarKeys": [
+        "ANOMALY_EVENTS_TABLE_NAME",
+        "NODE_STATE_TABLE_NAME",
+        "RECOVERY_EVENTS_TABLE_NAME"
+      ],
+      "Role": "arn:aws:iam::401429382000:role/SentinelGridKnowledgeQueryExecutionRole",
+      "VpcConfig": {
+        "SubnetIds": [],
+        "SecurityGroupIds": [],
+        "VpcId": "",
+        "Ipv6AllowedForDualStack": false
+      },
+      "Layers": null,
+      "TracingConfig": {
+        "Mode": "PassThrough"
+      },
+      "FunctionUrlConfig": null,
+      "ResourceBasedPolicy": {
+        "Version": "2012-10-17",
+        "Id": "default",
+        "Statement": [
+          {
+            "Sid": "sentinelgrid-knowledge-query-KnowledgeQueryInvokePermission-X19GMZRG3C5v",
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "apigateway.amazonaws.com"
+            },
+            "Action": "lambda:InvokeFunction",
+            "Resource": "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridKnowledgeQuery",
+            "Condition": {
+              "ArnLike": {
+                "AWS:SourceArn": "arn:aws:execute-api:ap-south-1:401429382000:m1uqr1hsq3/*/*/nodes*"
+              }
+            }
+          },
+          {
+            "Sid": "sentinelgrid-knowledge-query-KnowledgeQueryInvokePermissionEvents-ZrcpD4d6gA9W",
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "apigateway.amazonaws.com"
+            },
+            "Action": "lambda:InvokeFunction",
+            "Resource": "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridKnowledgeQuery",
+            "Condition": {
+              "ArnLike": {
+                "AWS:SourceArn": "arn:aws:execute-api:ap-south-1:401429382000:m1uqr1hsq3/*/*/events*"
+              }
+            }
+          },
+          {
+            "Sid": "sentinelgrid-knowledge-query-KnowledgeQueryInvokePermissionMetrics-lASu0bnRgj6z",
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "apigateway.amazonaws.com"
+            },
+            "Action": "lambda:InvokeFunction",
+            "Resource": "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridKnowledgeQuery",
+            "Condition": {
+              "ArnLike": {
+                "AWS:SourceArn": "arn:aws:execute-api:ap-south-1:401429382000:m1uqr1hsq3/*/*/metrics*"
+              }
+            }
+          }
+        ]
+      },
+      "LastModified": "2026-09-15T17:41:41.000+0000"
+    }
+  },
+  "dynamodb": {
+    "SentinelGridTelemetry": {
+      "BillingMode": "PAY_PER_REQUEST",
+      "SSEDescription": null,
+      "DeletionProtectionEnabled": false,
+      "PointInTimeRecoveryStatus": "DISABLED",
+      "KeySchema": [
+        {
+          "AttributeName": "node_id",
+          "KeyType": "HASH"
+        },
+        {
+          "AttributeName": "timestamp",
+          "KeyType": "RANGE"
+        }
+      ]
+    },
+    "SentinelGridAnomalyEvents": {
+      "BillingMode": "PAY_PER_REQUEST",
+      "SSEDescription": null,
+      "DeletionProtectionEnabled": false,
+      "PointInTimeRecoveryStatus": "DISABLED",
+      "KeySchema": [
+        {
+          "AttributeName": "node_id",
+          "KeyType": "HASH"
+        },
+        {
+          "AttributeName": "timestamp",
+          "KeyType": "RANGE"
+        }
+      ]
+    },
+    "SentinelGridRecoveryEvents": {
+      "BillingMode": "PAY_PER_REQUEST",
+      "SSEDescription": {
+        "Status": "ENABLED",
+        "SSEType": "KMS",
+        "KMSMasterKeyArn": "arn:aws:kms:ap-south-1:401429382000:key/4ec539b2-97c6-491b-9346-601d55c7ee38"
+      },
+      "DeletionProtectionEnabled": false,
+      "PointInTimeRecoveryStatus": "DISABLED",
+      "KeySchema": [
+        {
+          "AttributeName": "node_id",
+          "KeyType": "HASH"
+        },
+        {
+          "AttributeName": "timestamp",
+          "KeyType": "RANGE"
+        }
+      ]
+    },
+    "SentinelGridNodeState": {
+      "BillingMode": "PAY_PER_REQUEST",
+      "SSEDescription": {
+        "Status": "ENABLED",
+        "SSEType": "KMS",
+        "KMSMasterKeyArn": "arn:aws:kms:ap-south-1:401429382000:key/4ec539b2-97c6-491b-9346-601d55c7ee38"
+      },
+      "DeletionProtectionEnabled": false,
+      "PointInTimeRecoveryStatus": "DISABLED",
+      "KeySchema": [
+        {
+          "AttributeName": "node_id",
+          "KeyType": "HASH"
+        }
+      ]
+    }
+  },
+  "sqs": {
+    "SentinelGridTelemetryQueue": {
+      "QueueArn": "arn:aws:sqs:ap-south-1:401429382000:SentinelGridTelemetryQueue",
+      "ApproximateNumberOfMessages": "0",
+      "ApproximateNumberOfMessagesNotVisible": "0",
+      "ApproximateNumberOfMessagesDelayed": "0",
+      "CreatedTimestamp": "1789388826",
+      "LastModifiedTimestamp": "1789390881",
+      "VisibilityTimeout": "90",
+      "MaximumMessageSize": "1048576",
+      "MessageRetentionPeriod": "345600",
+      "DelaySeconds": "0",
+      "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:ap-south-1:401429382000:SentinelGridTelemetryDLQ\",\"maxReceiveCount\":5}",
+      "ReceiveMessageWaitTimeSeconds": "0",
+      "SqsManagedSseEnabled": "true"
+    },
+    "SentinelGridTelemetryDLQ": {
+      "QueueArn": "arn:aws:sqs:ap-south-1:401429382000:SentinelGridTelemetryDLQ",
+      "ApproximateNumberOfMessages": "0",
+      "ApproximateNumberOfMessagesNotVisible": "0",
+      "ApproximateNumberOfMessagesDelayed": "0",
+      "CreatedTimestamp": "1789388825",
+      "LastModifiedTimestamp": "1789388825",
+      "VisibilityTimeout": "30",
+      "MaximumMessageSize": "1048576",
+      "MessageRetentionPeriod": "1209600",
+      "DelaySeconds": "0",
+      "ReceiveMessageWaitTimeSeconds": "0",
+      "SqsManagedSseEnabled": "true"
+    }
+  },
+  "iot": {
+    "policies": [],
+    "certificates": [],
+    "things": [],
+    "topic_rules": [
+      {
+        "ruleArn": "arn:aws:iot:ap-south-1:401429382000:rule/sentinelgrid_telemetry_to_dynamodb",
+        "ruleName": "sentinelgrid_telemetry_to_dynamodb",
+        "topicPattern": "sentinelgrid/telemetry",
+        "createdAt": "2026-09-05 21:44:17+05:30",
+        "ruleDisabled": false
+      },
+      {
+        "ruleArn": "arn:aws:iot:ap-south-1:401429382000:rule/sentinelgrid_telemetry_to_lambda",
+        "ruleName": "sentinelgrid_telemetry_to_lambda",
+        "topicPattern": "sentinelgrid/telemetry",
+        "createdAt": "2026-09-14 18:35:03+05:30",
+        "ruleDisabled": true
+      },
+      {
+        "ruleArn": "arn:aws:iot:ap-south-1:401429382000:rule/sentinelgrid_telemetry_to_sqs",
+        "ruleName": "sentinelgrid_telemetry_to_sqs",
+        "topicPattern": "sentinelgrid/telemetry",
+        "createdAt": "2026-09-14 17:58:31+05:30",
+        "ruleDisabled": false
+      }
+    ],
+    "topic_rule_details": {
+      "sentinelgrid_telemetry_to_dynamodb": {
+        "ruleName": "sentinelgrid_telemetry_to_dynamodb",
+        "sql": "SELECT * FROM 'sentinelgrid/telemetry'",
+        "createdAt": "2026-09-05 21:44:17+05:30",
+        "actions": [
+          {
+            "dynamoDBv2": {
+              "roleArn": "arn:aws:iam::401429382000:role/SentinelGridIoTToDynamoDBRole",
+              "putItem": {
+                "tableName": "SentinelGridTelemetry"
+              }
+            }
+          }
+        ],
+        "ruleDisabled": false,
+        "awsIotSqlVersion": "2016-03-23"
+      },
+      "sentinelgrid_telemetry_to_lambda": {
+        "ruleName": "sentinelgrid_telemetry_to_lambda",
+        "sql": "SELECT * FROM 'sentinelgrid/telemetry'",
+        "createdAt": "2026-09-14 18:35:03+05:30",
+        "actions": [
+          {
+            "lambda": {
+              "functionArn": "arn:aws:lambda:ap-south-1:401429382000:function:SentinelGridAnomalyDetector"
+            }
+          }
+        ],
+        "ruleDisabled": true,
+        "awsIotSqlVersion": "2016-03-23"
+      },
+      "sentinelgrid_telemetry_to_sqs": {
+        "ruleName": "sentinelgrid_telemetry_to_sqs",
+        "sql": "SELECT * FROM 'sentinelgrid/telemetry'",
+        "createdAt": "2026-09-14 17:58:31+05:30",
+        "actions": [
+          {
+            "sqs": {
+              "roleArn": "arn:aws:iam::401429382000:role/SentinelGridIoTToSqsRole",
+              "queueUrl": "https://sqs.ap-south-1.amazonaws.com/401429382000/SentinelGridTelemetryQueue",
+              "useBase64": false
+            }
+          }
+        ],
+        "ruleDisabled": false,
+        "awsIotSqlVersion": "2016-03-23"
+      }
+    }
+  },
+  "api_gateway": {
+    "CorsConfiguration": {
+      "AllowHeaders": [
+        "content-type"
+      ],
+      "AllowMethods": [
+        "GET"
+      ],
+      "AllowOrigins": [
+        "http://localhost:5173"
+      ],
+      "MaxAge": 300
+    },
+    "DisableExecuteApiEndpoint": false,
+    "routes": [
+      {
+        "RouteKey": "GET /metrics",
+        "AuthorizationType": "NONE",
+        "ApiKeyRequired": false
+      },
+      {
+        "RouteKey": "GET /nodes",
+        "AuthorizationType": "NONE",
+        "ApiKeyRequired": false
+      },
+      {
+        "RouteKey": "GET /nodes/{node_id}/anomalies",
+        "AuthorizationType": "NONE",
+        "ApiKeyRequired": false
+      },
+      {
+        "RouteKey": "GET /nodes/{node_id}",
+        "AuthorizationType": "NONE",
+        "ApiKeyRequired": false
+      },
+      {
+        "RouteKey": "GET /nodes/{node_id}/summary",
+        "AuthorizationType": "NONE",
+        "ApiKeyRequired": false
+      },
+      {
+        "RouteKey": "GET /nodes/{node_id}/recoveries",
+        "AuthorizationType": "NONE",
+        "ApiKeyRequired": false
+      },
+      {
+        "RouteKey": "GET /events",
+        "AuthorizationType": "NONE",
+        "ApiKeyRequired": false
+      }
+    ],
+    "stages": [
+      {
+        "StageName": "$default",
+        "RouteSettings": {},
+        "DefaultRouteSettings": {
+          "DetailedMetricsEnabled": false
+        }
+      }
+    ],
+    "authorizers": []
+  },
+  "cloudwatch_sns": {
+    "alarms": [
+      {
+        "AlarmName": "SentinelGrid-UnresolvedFaults-Alarm",
+        "StateValue": "OK",
+        "MetricName": "UnresolvedFaultCount",
+        "Namespace": "SentinelGrid",
+        "Dimensions": [
+          {
+            "Name": "Subsystem",
+            "Value": "power"
+          },
+          {
+            "Name": "FaultType",
+            "Value": "NODE_OVERLOAD"
+          }
+        ],
+        "AlarmActions": [
+          "arn:aws:sns:ap-south-1:401429382000:SentinelGrid-UnresolvedFaults"
+        ],
+        "OKActions": []
+      }
+    ],
+    "dashboards": [
+      "SentinelGrid-Observability"
+    ],
+    "sns_topics": {
+      "arn:aws:sns:ap-south-1:401429382000:SentinelGrid-UnresolvedFaults": {
+        "attributes": {
+          "Policy": "{\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\"],\"Resource\":\"arn:aws:sns:ap-south-1:401429382000:SentinelGrid-UnresolvedFaults\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"401429382000\"}}}]}",
+          "Owner": "401429382000",
+          "SubscriptionsPending": "0",
+          "TopicArn": "arn:aws:sns:ap-south-1:401429382000:SentinelGrid-UnresolvedFaults",
+          "EffectiveDeliveryPolicy": "{\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":20,\"maxDelayTarget\":20,\"numRetries\":3,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"disableSubscriptionOverrides\":false,\"defaultRequestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"}}}",
+          "SubscriptionsConfirmed": "0",
+          "DisplayName": "SentinelGrid Unresolved Faults",
+          "SubscriptionsDeleted": "0"
+        },
+        "subscriptions": []
+      }
+    }
+  },
+  "s3_deployment_bucket": {
+    "public_access_block": {
+      "BlockPublicAcls": true,
+      "IgnorePublicAcls": true,
+      "BlockPublicPolicy": true,
+      "RestrictPublicBuckets": true
+    },
+    "bucket_policy": "ABSENT (NoSuchBucketPolicy)",
+    "encryption": {
+      "Rules": [
+        {
+          "ApplyServerSideEncryptionByDefault": {
+            "SSEAlgorithm": "AES256"
+          },
+          "BucketKeyEnabled": false,
+          "BlockedEncryptionTypes": {
+            "EncryptionType": [
+              "SSE-C"
+            ]
+          }
+        }
+      ]
+    },
+    "versioning": "Enabled",
+    "ownership": {
+      "Rules": [
+        {
+          "ObjectOwnership": "BucketOwnerEnforced"
+        }
+      ]
+    }
+  },
+  "cloudtrail": {
+    "trails": [],
+    "event_data_stores": [],
+    "default_event_history_available": true
+  },
+  "step_functions": {
+    "name": "SentinelGridRemediationWorkflow",
+    "status": "ACTIVE",
+    "live_definition_sha256_raw_boto3_string": "b861896cbc7ed4a75de1ee19aabf515907dab8e1668a3e0bcb9fb4f6ea09dc7e",
+    "live_definition_sha256_normalized": "b861896cbc7ed4a75de1ee19aabf515907dab8e1668a3e0bcb9fb4f6ea09dc7e"
+  }
+}

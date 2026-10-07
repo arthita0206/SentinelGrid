@@ -1,0 +1,47 @@
+{
+  "test_id": "step46-caseC2-corruption-singletick",
+  "fault_type_injected": "corruption",
+  "subsystem": "power",
+  "target_node_id": "power-step46-caseC2-corruption-singletick-001",
+  "fault_id": "d26f02f4-22ef-4a25-9f54-6840578ac722",
+  "injection_start": "2026-09-16T11:11:52.650626+00:00",
+  "test_end": "2026-09-16T11:11:53.081937+00:00",
+  "ticks": 1,
+  "interval_seconds": 5.0,
+  "fault_duration_seconds": null,
+  "published_records": [
+    {
+      "tick": 0,
+      "published_at": "2026-09-16T11:11:53.081875+00:00",
+      "publish_success": null,
+      "payload": {
+        "node_id": "power-step46-caseC2-corruption-singletick-001",
+        "subsystem": "power",
+        "timestamp": "2026-09-16T11:11:52.650977+00:00",
+        "status": "ONLINE",
+        "data": {
+          "load": 52.33,
+          "voltage": 704.6,
+          "frequency": 50.073
+        }
+      },
+      "local_expected_detection": {
+        "detected": true,
+        "fault_type": "DATA_CORRUPTION",
+        "severity": "HIGH",
+        "node_id": "power-step46-caseC2-corruption-singletick-001",
+        "subsystem": "power",
+        "timestamp": "2026-09-16T11:11:52.650977+00:00",
+        "reason": "Field 'voltage' value 704.6 is outside the physically valid range (200.0, 250.0).",
+        "evidence": {
+          "field": "voltage",
+          "value": 704.6,
+          "normal_range": [
+            200.0,
+            250.0
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SentinelGrid — remediation trigger Lambda (Step 21). Creates one
+  Lambda (SentinelGridRemediationTrigger) and its dedicated execution
+  role, wrapping the local decision module
+  (lambda_functions/remediation_trigger/trigger.py) via
+  handler.py. The role grants only CloudWatch Logs (own log group) plus
+  exactly states:StartExecution on the existing
+  SentinelGridRemediationWorkflow state machine. Deployed and tested
+  INDEPENDENTLY — not wired to the anomaly detector (Step 22). The
+  state machine ARN comes via the RemediationStateMachineArn parameter:
+  Step 18's stack has no cross-stack Export for it, so the deploy
+  script supplies it by reading that existing, untouched stack's own
+  Output. See infrastructure/README.md and
+  lambda_functions/remediation_trigger/README.md.
+
+Parameters:
+  DeploymentBucketName:
+    Type: String
+    Description: >
+      Name of an EXISTING, VERSIONING-ENABLED S3 bucket containing the
+      packaged trigger Lambda zip (see
+      infrastructure/package-remediation-trigger.sh). This template does
+      not create this bucket.
+
+  DeploymentPackageKey:
+    Type: String
+    Default: sentinelgrid/remediation-trigger.zip
+    Description: S3 key of the packaged trigger zip within DeploymentBucketName.
+
+  DeploymentPackageVersion:
+    Type: String
+    Description: >
+      S3 object VersionId of the trigger zip at
+      DeploymentBucketName/DeploymentPackageKey. Required, no default —
+      see infrastructure/deploy-remediation-trigger.sh.
+
+  RemediationStateMachineArn:
+    Type: String
+    Description: >
+      ARN of the already-deployed SentinelGridRemediationWorkflow state
+      machine (see infrastructure/remediation-workflow.yaml, Step 18).
+      Required, no default — obtained live from that stack's own
+      StateMachineArn Output by the deploy script. This template does
+      not create, modify, or assume anything about that stack.
+
+Resources:
+  RemediationTriggerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SentinelGridRemediationTriggerExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SentinelGridRemediationTriggerLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/SentinelGridRemediationTrigger:*"
+        - PolicyName: SentinelGridRemediationTriggerStartExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource:
+                  - !Ref RemediationStateMachineArn
+
+  RemediationTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SentinelGridRemediationTrigger
+      Description: >-
+        SentinelGrid remediation trigger Lambda. Thin adapter over
+        evaluate(). Input: a DetectionResult-shaped dict. Starts the
+        remediation Step Functions workflow only when detected=true and
+        a usable identity is present. Not yet invoked by the detector.
+      Runtime: python3.12
+      Architectures: [arm64]
+      Handler: lambda_functions.remediation_trigger.handler.lambda_handler
+      Role: !GetAtt RemediationTriggerExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          REMEDIATION_STATE_MACHINE_ARN: !Ref RemediationStateMachineArn
+      Code:
+        S3Bucket: !Ref DeploymentBucketName
+        S3Key: !Ref DeploymentPackageKey
+        S3ObjectVersion: !Ref DeploymentPackageVersion
+
+Outputs:
+  FunctionArn:
+    Description: ARN of the SentinelGrid remediation trigger Lambda function.
+    Value: !GetAtt RemediationTriggerFunction.Arn
+
+  ExecutionRoleArn:
+    Description: ARN of the execution role for the remediation trigger Lambda.
+    Value: !GetAtt RemediationTriggerExecutionRole.Arn

@@ -1,0 +1,78 @@
+# SentinelGrid — local simulation configuration
+#
+# Placeholder / default values for the smart-city simulation. These are
+# consumed by the simulator once it is implemented in a later step.
+
+power:
+  num_nodes: 20
+
+water:
+  num_nodes: 20
+
+traffic:
+  num_nodes: 20
+
+telemetry:
+  interval_seconds: 5
+
+# Local fault-injection defaults (Step 3). Automatic (random/scheduled)
+# fault triggering is OFF by default so normal simulation stays fault-free
+# unless explicitly enabled or a fault is manually injected.
+fault_injection:
+  enabled: false
+  mode: manual   # manual | random | scheduled
+  random_seed: null
+
+  dropout:
+    enabled: true
+    duration_seconds: 15
+    probability: 0.0
+
+  corruption:
+    enabled: true
+    probability: 0.0
+
+  partition:
+    enabled: true
+    duration_seconds: 15
+    probability: 0.0
+
+  overload:
+    enabled: true
+    duration_seconds: 10
+    probability: 0.0
+
+  # Used only when mode: scheduled. Each entry fires once, `delay_seconds`
+  # after simulator start. Example:
+  # schedule:
+  #   - fault_type: dropout
+  #     target: power-001
+  #     delay_seconds: 30
+  #     duration_seconds: 15
+  schedule: []
+
+# Publisher selection (Step 4): which Publisher implementation(s)
+# CitySimulator uses. Defaults to "local" so running the simulator with no
+# AWS setup behaves exactly as it did before Step 4.
+publisher:
+  mode: local   # local | aws_iot | both
+
+# AWS IoT Core telemetry ingestion (Step 4). Only used when publisher.mode
+# is aws_iot or both — never required for local mode. No credentials
+# belong here or anywhere in this repo: AwsIotPublisher resolves them via
+# boto3's normal credential chain — the `profile` below (an AWS CLI
+# profile name) if configured, otherwise environment variables, the
+# default profile, or an instance/role.
+#
+# No AWS resources (IoT Things, certificates, policies, endpoints, etc.)
+# are created by this project — they must already exist for aws_iot mode
+# to work.
+aws:
+  region: ap-south-1
+  profile: sentinelgrid
+  iot:
+    topic: sentinelgrid/telemetry
+    # Explicit override for the account's IoT Data-ATS endpoint. Leave
+    # null to auto-discover it (via iot:DescribeEndpoint) the first time
+    # a reading is published.
+    endpoint_url: null
